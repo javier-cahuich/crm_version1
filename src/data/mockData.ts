@@ -40,6 +40,8 @@ export interface KanbanCard {
   quantity: number;
   priority: "alta" | "media" | "baja";
   dueDate: string;
+  ingreso?: number;
+  descripcion?: string;
 }
 
 export const dailyTasks: Task[] = [
@@ -85,29 +87,29 @@ export const suppliers: Supplier[] = [
 ];
 
 export const kanbanColumns: { id: string; title: string; colorClass: string }[] = [
+  { id: "lead", title: "Lead", colorClass: "kanban-col-lead" },
   { id: "cotizacion", title: "Cotización", colorClass: "kanban-col-cotizacion" },
-  { id: "diseno", title: "Diseño/Aprobación", colorClass: "kanban-col-diseno" },
-  { id: "produccion", title: "En Producción", colorClass: "kanban-col-produccion" },
-  { id: "calidad", title: "Control de Calidad", colorClass: "kanban-col-calidad" },
-  { id: "entrega", title: "Listo para Entrega", colorClass: "kanban-col-entrega" },
+  { id: "aprobacion", title: "Aprobación", colorClass: "kanban-col-aprobacion" },
+  { id: "trato_cerrado", title: "Trato Cerrado", colorClass: "kanban-col-trato-cerrado" },
+  { id: "trato_perdido", title: "Trato Perdido", colorClass: "kanban-col-trato-perdido" },
 ];
 
 export const kanbanCards: Record<string, KanbanCard[]> = {
-  cotizacion: [
+  lead: [
     { id: "k1", title: "100 delantales personalizados", client: "Restaurante El Fogón", quantity: 100, priority: "media", dueDate: "2026-04-01" },
     { id: "k2", title: "500 stickers vinilo", client: "Cervecería Artesanal Norte", quantity: 500, priority: "baja", dueDate: "2026-04-05" },
   ],
-  diseno: [
+  cotizacion: [
     { id: "k3", title: "50 bolsas de tela ecológicas", client: "Café Origen", quantity: 50, priority: "media", dueDate: "2026-03-28" },
   ],
-  produccion: [
+  aprobacion: [
     { id: "k4", title: "200 camisetas técnicas", client: "Club Deportivo Luna", quantity: 200, priority: "alta", dueDate: "2026-03-25" },
     { id: "k5", title: "80 gorras bordadas", client: "Farmacia Central", quantity: 80, priority: "media", dueDate: "2026-03-27" },
   ],
-  calidad: [
+  trato_cerrado: [
     { id: "k6", title: "300 polos corporativos", client: "Tech Solutions", quantity: 300, priority: "alta", dueDate: "2026-03-24" },
   ],
-  entrega: [
+  trato_perdido: [
     { id: "k7", title: "150 buzos escolares", client: "Escuela San Martín", quantity: 150, priority: "media", dueDate: "2026-03-23" },
   ],
 };
