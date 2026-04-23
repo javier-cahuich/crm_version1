@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
 
 @layer base {
   :root {
@@ -52,11 +52,11 @@
     --info: 213 94% 52%;
     --info-foreground: 0 0% 100%;
 
-    --kanban-cotizacion: 213 94% 52%;
-    --kanban-diseno: 271 76% 53%;
-    --kanban-produccion: 24 95% 53%;
-    --kanban-calidad: 38 92% 50%;
-    --kanban-entrega: 152 60% 42%;
+    --kanban-lead: 213 94% 52%;
+    --kanban-cotizacion: 271 76% 53%;
+    --kanban-aprobacion: 24 95% 53%;
+    --kanban-trato-cerrado: 152 60% 42%;
+    --kanban-trato-perdido: 0 84% 60%;
   }
 
   .dark {
@@ -101,9 +101,9 @@
 }
 
 @layer utilities {
+  .kanban-col-lead { border-top-color: hsl(var(--kanban-lead)); }
   .kanban-col-cotizacion { border-top-color: hsl(var(--kanban-cotizacion)); }
-  .kanban-col-diseno { border-top-color: hsl(var(--kanban-diseno)); }
-  .kanban-col-produccion { border-top-color: hsl(var(--kanban-produccion)); }
-  .kanban-col-calidad { border-top-color: hsl(var(--kanban-calidad)); }
-  .kanban-col-entrega { border-top-color: hsl(var(--kanban-entrega)); }
+  .kanban-col-aprobacion { border-top-color: hsl(var(--kanban-aprobacion)); }
+  .kanban-col-trato-cerrado { border-top-color: hsl(var(--kanban-trato-cerrado)); }
+  .kanban-col-trato-perdido { border-top-color: hsl(var(--kanban-trato-perdido)); }
 }
