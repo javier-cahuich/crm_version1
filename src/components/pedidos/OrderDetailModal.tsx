@@ -14,27 +14,47 @@ import {
   Layers,
   FileText,
   Paperclip,
-  Phone,
+  Calendar,
+  Flag,
   Trash2,
   AlertTriangle,
   X,
 } from "lucide-react";
 
-// ── Etiqueta de etapa ────────────────────────────────────────────────────────
+// ── Etiquetas de etapa (columnas de pedidos) ─────────────────────────────────
 const stageLabels: Record<string, string> = {
-  lead: "Lead",
-  cotizacion: "Cotización",
-  aprobacion: "Aprobación",
-  trato_cerrado: "Trato Cerrado",
-  trato_perdido: "Trato Perdido",
+  en_cola: "Pedidos en cola",
+  en_curso: "En curso",
+  control_calidad: "Control de calidad",
+  listo_entrega: "Listo para entrega",
+  entregado: "Entregado",
 };
 
 const stageColors: Record<string, string> = {
-  lead: "bg-blue-100 text-blue-700 border-blue-200",
-  cotizacion: "bg-amber-100 text-amber-700 border-amber-200",
-  aprobacion: "bg-violet-100 text-violet-700 border-violet-200",
-  trato_cerrado: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  trato_perdido: "bg-red-100 text-red-700 border-red-200",
+  en_cola: "bg-blue-100 text-blue-700 border-blue-200",
+  en_curso: "bg-amber-100 text-amber-700 border-amber-200",
+  control_calidad: "bg-violet-100 text-violet-700 border-violet-200",
+  listo_entrega: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  entregado: "bg-slate-100 text-slate-600 border-slate-200",
+};
+
+// ── Colores de prioridad ─────────────────────────────────────────────────────
+const priorityLabels: Record<string, string> = {
+  alta: "Alta",
+  media: "Media",
+  baja: "Baja",
+};
+
+const priorityColors: Record<string, string> = {
+  alta: "bg-red-100 text-red-700 border-red-200",
+  media: "bg-amber-100 text-amber-700 border-amber-200",
+  baja: "bg-green-100 text-green-700 border-green-200",
+};
+
+const priorityIcons: Record<string, string> = {
+  alta: "🔴",
+  media: "🟡",
+  baja: "🟢",
 };
 
 // ── Sub-componente: fila de detalle ──────────────────────────────────────────
@@ -89,7 +109,7 @@ function DeleteConfirmDialog({
             <AlertTriangle className="h-5 w-5" />
           </span>
           <div>
-            <p className="font-semibold text-sm">Eliminar trato</p>
+            <p className="font-semibold text-sm">Eliminar pedido</p>
             <p className="text-muted-foreground text-sm mt-0.5">
               ¿Seguro que quieres eliminarlo?
             </p>
@@ -109,61 +129,77 @@ function DeleteConfirmDialog({
 }
 
 // ── Modal principal ──────────────────────────────────────────────────────────
-interface DealDetailModalProps {
-  deal: (KanbanCard & { stage?: string }) | null;
+interface OrderDetailModalProps {
+  order: (KanbanCard & { stage?: string }) | null;
   open: boolean;
   onClose: () => void;
+  onDelete?: (orderId: string) => void;
 }
 
-export default function DealDetailModal({
-  deal,
+export default function OrderDetailModal({
+  order,
   open,
   onClose,
-}: DealDetailModalProps) {
+  onDelete,
+}: OrderDetailModalProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  if (!deal) return null;
+  if (!order) return null;
 
-  const stageName = stageLabels[deal.stage ?? ""] ?? deal.stage ?? "—";
+  const stageName = stageLabels[order.stage ?? ""] ?? order.stage ?? "—";
   const stageColor =
-    stageColors[deal.stage ?? ""] ??
+    stageColors[order.stage ?? ""] ??
     "bg-muted text-muted-foreground border-border";
 
-  const ingresoFormatted =
-    deal.ingreso !== undefined
-      ? deal.ingreso.toLocaleString("es-MX", {
-        style: "currency",
-        currency: "MXN",
-        maximumFractionDigits: 0,
-      })
+  const priorityKey = order.priority ?? "media";
+  const priorityLabel = priorityLabels[priorityKey] ?? priorityKey;
+  const priorityColor =
+    priorityColors[priorityKey] ?? "bg-muted text-muted-foreground border-border";
+  const priorityIcon = priorityIcons[priorityKey] ?? "";
+
+  const valorFormatted =
+    order.ingreso !== undefined
+      ? order.ingreso.toLocaleString("es-MX", {
+          style: "currency",
+          currency: "MXN",
+          maximumFractionDigits: 0,
+        })
       : "No especificado";
+
+  const fechaFormatted = order.dueDate
+    ? new Date(order.dueDate + "T00:00:00").toLocaleDateString("es-MX", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "No especificada";
+
+  function handleConfirmDelete() {
+    setConfirmDelete(false);
+    onDelete?.(order!.id);
+    onClose();
+  }
 
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="max-w-md w-full p-0 gap-0 overflow-hidden rounded-xl" hideCloseButton>
+        <DialogContent
+          className="max-w-md w-full p-0 gap-0 overflow-hidden rounded-xl"
+          hideCloseButton
+        >
           {/* ── Header ── */}
           <DialogHeader className="px-5 pt-5 pb-4 border-b border-border space-y-0">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <DialogTitle className="text-base font-bold leading-snug pr-2">
-                  {deal.title}
+                  {order.title}
                 </DialogTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Detalle del trato
+                  Detalle del pedido
                 </p>
               </div>
               {/* Acciones del header */}
               <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs h-8"
-                  onClick={() => { }}
-                >
-                  <Phone className="h-3.5 w-3.5" />
-                  Contactar cliente
-                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -178,22 +214,28 @@ export default function DealDetailModal({
 
           {/* ── Cuerpo ── */}
           <div className="px-5 py-4 space-y-0 overflow-y-auto max-h-[60vh]">
-            {/* Detalles del trato */}
+            {/* Nombre del pedido */}
             <DetailRow
               icon={<FileText className="h-4 w-4" />}
-              label="Nombre del trato"
-              value={deal.title}
+              label="Nombre del pedido"
+              value={order.title}
             />
+
+            {/* Cliente */}
             <DetailRow
               icon={<User className="h-4 w-4" />}
               label="Cliente"
-              value={deal.client}
+              value={order.client}
             />
+
+            {/* Valor del pedido */}
             <DetailRow
               icon={<DollarSign className="h-4 w-4" />}
-              label="Ingreso esperado"
-              value={ingresoFormatted}
+              label="Valor del pedido"
+              value={valorFormatted}
             />
+
+            {/* Etapa actual */}
             <DetailRow
               icon={<Layers className="h-4 w-4" />}
               label="Etapa"
@@ -206,13 +248,36 @@ export default function DealDetailModal({
                 </Badge>
               }
             />
-            {deal.descripcion && (
+
+            {/* Fecha de entrega */}
+            <DetailRow
+              icon={<Calendar className="h-4 w-4" />}
+              label="Fecha de entrega"
+              value={fechaFormatted}
+            />
+
+            {/* Nivel de prioridad */}
+            <DetailRow
+              icon={<Flag className="h-4 w-4" />}
+              label="Nivel de prioridad"
+              value={
+                <Badge
+                  variant="outline"
+                  className={`text-xs font-medium ${priorityColor}`}
+                >
+                  {priorityIcon} {priorityLabel}
+                </Badge>
+              }
+            />
+
+            {/* Descripción (si existe) */}
+            {order.descripcion && (
               <DetailRow
                 icon={<FileText className="h-4 w-4" />}
                 label="Descripción"
                 value={
                   <span className="text-sm text-foreground/80 leading-relaxed">
-                    {deal.descripcion}
+                    {order.descripcion}
                   </span>
                 }
               />
@@ -242,9 +307,6 @@ export default function DealDetailModal({
               <X className="h-3.5 w-3.5 mr-1.5" />
               Cerrar
             </Button>
-            <Button size="sm">
-              Crear pedido
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -253,10 +315,7 @@ export default function DealDetailModal({
       <DeleteConfirmDialog
         open={confirmDelete}
         onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => {
-          setConfirmDelete(false);
-          onClose();
-        }}
+        onConfirm={handleConfirmDelete}
       />
     </>
   );

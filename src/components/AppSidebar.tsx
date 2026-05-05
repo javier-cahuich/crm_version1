@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, Truck, Kanban } from "lucide-react";
+import { LayoutDashboard, Users, Truck, Kanban, ClipboardList } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -19,6 +19,7 @@ const navItems = [
   { title: "Clientes", url: "/clientes", icon: Users },
   { title: "Proveedores", url: "/proveedores", icon: Truck },
   { title: "Pipeline", url: "/pipeline", icon: Kanban },
+  { title: "Pedidos", url: "/pedidos", icon: ClipboardList },
 ];
 
 export function AppSidebar() {

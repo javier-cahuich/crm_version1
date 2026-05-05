@@ -94,6 +94,14 @@ export const kanbanColumns: { id: string; title: string; colorClass: string }[] 
   { id: "trato_perdido", title: "Trato Perdido", colorClass: "kanban-col-trato-perdido" },
 ];
 
+export const pedidosColumns: { id: string; title: string; colorClass: string }[] = [
+  { id: "en_cola", title: "Pedidos en cola", colorClass: "kanban-col-lead" },
+  { id: "en_curso", title: "En curso", colorClass: "kanban-col-cotizacion" },
+  { id: "control_calidad", title: "Control de calidad", colorClass: "kanban-col-aprobacion" },
+  { id: "listo_entrega", title: "Listo para entrega", colorClass: "kanban-col-trato-cerrado" },
+  { id: "entregado", title: "Entregado", colorClass: "kanban-col-trato-perdido" },
+];
+
 export const kanbanCards: Record<string, KanbanCard[]> = {
   lead: [
     { id: "k1", title: "100 delantales personalizados", client: "Restaurante El Fogón", quantity: 100, priority: "media", dueDate: "2026-04-01" },
