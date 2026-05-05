@@ -62,14 +62,14 @@ export default function KanbanColumn({ column, cards, onCardClick }: ColumnProps
   const totalIngreso = cards.reduce((sum, c) => sum + (c.ingreso ?? 0), 0);
 
   return (
-    <div className="min-w-[280px] w-[280px] shrink-0 snap-start">
+    <div className="min-w-[280px] w-[280px] shrink-0 snap-start flex flex-col" style={{ height: "540px" }}>
       <div
-        className={`border-t-4 ${column.colorClass} rounded-lg bg-card border border-t-4 transition-colors ${
+        className={`border-t-4 ${column.colorClass} rounded-lg bg-card border border-t-4 transition-colors flex flex-col h-full ${
           isOver ? "ring-2 ring-primary/40 bg-primary/5" : ""
         }`}
       >
-        {/* Cabecera */}
-        <div className="p-3 border-b">
+        {/* Cabecera \u2014 fuera del área desplazable */}
+        <div className="p-3 border-b shrink-0">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-semibold text-sm">{column.title}</h3>
             <Badge variant="secondary" className="text-xs">{cards.length}</Badge>
@@ -83,8 +83,12 @@ export default function KanbanColumn({ column, cards, onCardClick }: ColumnProps
           </p>
         </div>
 
-        {/* Tarjetas */}
-        <div ref={setNodeRef} className="p-2 space-y-2 min-h-[200px]">
+        {/* Tarjetas \u2014 área desplazable */}
+        <div
+          ref={setNodeRef}
+          className="p-2 space-y-2 overflow-y-auto flex-1"
+          style={{ minHeight: 0 }}
+        >
           <SortableContext
             items={cards.map((c) => c.id)}
             strategy={verticalListSortingStrategy}

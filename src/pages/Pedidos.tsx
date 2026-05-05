@@ -13,25 +13,24 @@ import {
 import { arrayMove } from "@dnd-kit/sortable";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { kanbanColumns, KanbanCard } from "@/data/mockData";
+import { pedidosColumns, KanbanCard } from "@/data/mockData";
 import { Plus } from "lucide-react";
-import CreateDealPanel from "@/components/pipeline/CreateDealPanel";
+import CreateOrderPanel from "@/components/pedidos/CreateOrderPanel";
 import KanbanColumn from "@/components/pipeline/KanbanColumn";
 import KanbanCardItem from "@/components/pipeline/KanbanCardItem";
-import DealDetailModal from "@/components/pipeline/DealDetailModal";
+import OrderDetailModal from "@/components/pedidos/OrderDetailModal";
 
-// Tablero inicial vacío: estructura lista para recibir datos dinámicos
+// Tablero vacío con las 5 columnas de Pedidos
 const emptyBoard: Record<string, KanbanCard[]> = Object.fromEntries(
-  kanbanColumns.map((col) => [col.id, []])
+  pedidosColumns.map((col) => [col.id, []])
 );
 
-export default function Pipeline() {
+export default function Pedidos() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [cards, setCards] = useState<Record<string, KanbanCard[]>>(emptyBoard);
   const [activeCard, setActiveCard] = useState<KanbanCard | null>(null);
-  const [activeColId, setActiveColId] = useState<string | null>(null);
 
-  // ── Estado del modal de detalle ──────────────────────────────────────────
+  // Estado del modal de detalle
   const [selectedDeal, setSelectedDeal] = useState<(KanbanCard & { stage?: string }) | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -39,7 +38,6 @@ export default function Pipeline() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  // Encuentra en qué columna está una tarjeta dado su id
   function findColumn(cardId: string): string | null {
     for (const [colId, colCards] of Object.entries(cards)) {
       if (colCards.some((c) => c.id === cardId)) return colId;
@@ -53,7 +51,6 @@ export default function Pipeline() {
     if (!colId) return;
     const card = cards[colId].find((c) => c.id === cardId) ?? null;
     setActiveCard(card);
-    setActiveColId(colId);
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -65,9 +62,8 @@ export default function Pipeline() {
     if (activeId === overId) return;
 
     const fromCol = findColumn(activeId);
-    // El over puede ser el id de una columna o el id de una tarjeta
     const toCol =
-      kanbanColumns.find((c) => c.id === overId)?.id ?? findColumn(overId);
+      pedidosColumns.find((c) => c.id === overId)?.id ?? findColumn(overId);
 
     if (!fromCol || !toCol || fromCol === toCol) return;
 
@@ -84,14 +80,12 @@ export default function Pipeline() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setActiveCard(null);
-    setActiveColId(null);
     if (!over) return;
 
     const activeId = String(active.id);
     const overId = String(over.id);
     if (activeId === overId) return;
 
-    // Reordenar dentro de la misma columna
     const col = findColumn(activeId);
     if (!col) return;
     const colCards = cards[col];
@@ -105,14 +99,13 @@ export default function Pipeline() {
     }
   }
 
-  function handleCreateDeal(newCard: KanbanCard, etapa: string) {
+  function handleCreateOrder(newCard: KanbanCard, etapa: string) {
     setCards((prev) => ({
       ...prev,
       [etapa]: [newCard, ...(prev[etapa] ?? [])],
     }));
   }
 
-  /** Abre el modal de detalles con el trato y su etapa actual */
   function handleCardClick(card: KanbanCard) {
     const stage = findColumn(card.id) ?? undefined;
     setSelectedDeal({ ...card, stage });
@@ -124,12 +117,12 @@ export default function Pipeline() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Pipeline de Ventas</h1>
-          <p className="text-muted-foreground text-sm">Seguimiento de pedidos por etapa</p>
+          <h1 className="text-2xl font-bold">Pedidos</h1>
+          <p className="text-muted-foreground text-sm">Seguimiento de pedidos por etapa de producción</p>
         </div>
         <Button onClick={() => setPanelOpen(true)} className="shrink-0 gap-2">
           <Plus className="h-4 w-4" />
-          Crear trato
+          Crear pedido
         </Button>
       </div>
 
@@ -142,7 +135,7 @@ export default function Pipeline() {
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
-          {kanbanColumns.map((col) => (
+          {pedidosColumns.map((col) => (
             <KanbanColumn
               key={col.id}
               column={col}
@@ -166,18 +159,27 @@ export default function Pipeline() {
         </DragOverlay>
       </DndContext>
 
-      {/* Create Deal Side Panel */}
-      <CreateDealPanel
+      {/* Create Order Side Panel */}
+      <CreateOrderPanel
         open={panelOpen}
         onOpenChange={setPanelOpen}
-        onCreateDeal={handleCreateDeal}
+        onCreateOrder={handleCreateOrder}
       />
 
-      {/* Deal Detail Modal */}
-      <DealDetailModal
-        deal={selectedDeal}
+      {/* Order Detail Modal */}
+      <OrderDetailModal
+        order={selectedDeal}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
+        onDelete={(id) =>
+          setCards((prev) => {
+            const updated = { ...prev };
+            for (const col in updated) {
+              updated[col] = updated[col].filter((c) => c.id !== id);
+            }
+            return updated;
+          })
+        }
       />
     </div>
   );
