@@ -1,7 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Mail, Phone, MapPin, Loader2, AlertCircle } from "lucide-react";
+import { Search, Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useState, useEffect } from "react";
 
@@ -130,37 +128,36 @@ export default function Clientes() {
         </div>
       )}
 
-      {/* Client cards */}
+      {/* Clients table */}
       {!loading && !error && filtered.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((cliente) => (
-            <Card key={cliente.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{cliente.nombre}</CardTitle>
-                <p className="text-xs text-muted-foreground">{cliente.correo}</p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Mail className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{cliente.correo}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Phone className="h-3.5 w-3.5 shrink-0" />
-                  <span>{cliente.numero}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{cliente.direccion}</span>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <Badge variant="secondary">Cliente</Badge>
-                  <span className="text-xs text-muted-foreground">
-                    Alta: {cliente.createdAt}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="w-full overflow-x-auto rounded-lg border border-border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/50">
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Nombre</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Correo</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Teléfono</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Dirección</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">Fecha de alta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((cliente, index) => (
+                <tr
+                  key={cliente.id}
+                  className={`border-b border-border last:border-0 transition-colors hover:bg-muted/40 ${
+                    index % 2 === 0 ? "bg-background" : "bg-muted/10"
+                  }`}
+                >
+                  <td className="px-4 py-3 font-medium">{cliente.nombre}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{cliente.correo}</td>
+                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{cliente.numero}</td>
+                  <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{cliente.direccion}</td>
+                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{cliente.createdAt}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

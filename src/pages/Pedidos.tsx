@@ -20,14 +20,48 @@ import KanbanColumn from "@/components/pipeline/KanbanColumn";
 import KanbanCardItem from "@/components/pipeline/KanbanCardItem";
 import OrderDetailModal from "@/components/pedidos/OrderDetailModal";
 
-// Tablero vacío con las 5 columnas de Pedidos
-const emptyBoard: Record<string, KanbanCard[]> = Object.fromEntries(
-  pedidosColumns.map((col) => [col.id, []])
-);
+// Tablero inicial con pedidos simulados
+const initialPedidosBoard: Record<string, KanbanCard[]> = {
+  en_cola: [
+    {
+      id: "order-1",
+      title: "100 delantales personalizados",
+      client: "Restaurante El Fogón",
+      quantity: 100,
+      priority: "media",
+      dueDate: "2026-05-18",
+      descripcion: "Delantales con bordado de logotipo para el personal de cocina.",
+    },
+  ],
+  en_curso: [
+    {
+      id: "order-2",
+      title: "300 polos corporativos",
+      client: "Tech Solutions",
+      quantity: 300,
+      priority: "alta",
+      dueDate: "2026-05-12",
+      descripcion: "Polos manga corta con serigrafía de marca para evento anual.",
+    },
+  ],
+  control_calidad: [
+    {
+      id: "order-3",
+      title: "150 buzos escolares",
+      client: "Escuela San Martín",
+      quantity: 150,
+      priority: "baja",
+      dueDate: "2026-05-25",
+      descripcion: "Buzos con escudo bordado para nivel secundaria.",
+    },
+  ],
+  listo_entrega: [],
+  entregado: [],
+};
 
 export default function Pedidos() {
   const [panelOpen, setPanelOpen] = useState(false);
-  const [cards, setCards] = useState<Record<string, KanbanCard[]>>(emptyBoard);
+  const [cards, setCards] = useState<Record<string, KanbanCard[]>>(initialPedidosBoard);
   const [activeCard, setActiveCard] = useState<KanbanCard | null>(null);
 
   // Estado del modal de detalle

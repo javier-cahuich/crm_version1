@@ -20,14 +20,51 @@ import KanbanColumn from "@/components/pipeline/KanbanColumn";
 import KanbanCardItem from "@/components/pipeline/KanbanCardItem";
 import DealDetailModal from "@/components/pipeline/DealDetailModal";
 
-// Tablero inicial vacío: estructura lista para recibir datos dinámicos
-const emptyBoard: Record<string, KanbanCard[]> = Object.fromEntries(
-  kanbanColumns.map((col) => [col.id, []])
-);
+// Tablero inicial con datos simulados
+const initialBoard: Record<string, KanbanCard[]> = {
+  lead: [
+    {
+      id: "deal-1",
+      title: "500 stickers vinilo",
+      client: "Cervecería Artesanal Norte",
+      quantity: 500,
+      priority: "baja",
+      dueDate: "2026-05-20",
+      ingreso: 3500,
+      descripcion: "Stickers de vinilo para botellas de edición limitada.",
+    },
+  ],
+  cotizacion: [
+    {
+      id: "deal-2",
+      title: "80 gorras bordadas",
+      client: "Farmacia Central",
+      quantity: 80,
+      priority: "media",
+      dueDate: "2026-05-15",
+      ingreso: 12000,
+      descripcion: "Gorras con logo bordado para el equipo de ventas.",
+    },
+  ],
+  aprobacion: [
+    {
+      id: "deal-3",
+      title: "200 camisetas técnicas",
+      client: "Club Deportivo Luna",
+      quantity: 200,
+      priority: "alta",
+      dueDate: "2026-05-10",
+      ingreso: 28000,
+      descripcion: "Camisetas de temporada para el torneo regional.",
+    },
+  ],
+  trato_cerrado: [],
+  trato_perdido: [],
+};
 
 export default function Pipeline() {
   const [panelOpen, setPanelOpen] = useState(false);
-  const [cards, setCards] = useState<Record<string, KanbanCard[]>>(emptyBoard);
+  const [cards, setCards] = useState<Record<string, KanbanCard[]>>(initialBoard);
   const [activeCard, setActiveCard] = useState<KanbanCard | null>(null);
   const [activeColId, setActiveColId] = useState<string | null>(null);
 
