@@ -12,6 +12,7 @@ import Pipeline from "./pages/Pipeline";
 import Pedidos from "./pages/Pedidos";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
+import Reportes from "./pages/Reportes";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ const App = () => (
               <Route path="/proveedores" element={<Proveedores />} />
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/pedidos" element={<Pedidos />} />
+              <Route path="/reportes" element={<Reportes />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Route>

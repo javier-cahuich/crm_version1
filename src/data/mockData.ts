@@ -31,6 +31,8 @@ export interface Supplier {
   email: string;
   phone: string;
   products: string;
+  direccion: string;
+  createdAt: string;
 }
 
 export interface KanbanCard {
@@ -79,11 +81,11 @@ export const clients: Client[] = [
 ];
 
 export const suppliers: Supplier[] = [
-  { id: "1", name: "TintaMax", category: "Tintas", email: "ventas@tintamax.com", phone: "+54 11 4444-1111", products: "Tintas plastisol, base agua, sublimación" },
-  { id: "2", name: "TextilPro", category: "Prendas", email: "info@textilpro.com", phone: "+54 11 4444-2222", products: "Camisetas, polos, buzos, remeras" },
-  { id: "3", name: "Emulsiones del Sur", category: "Emulsiones", email: "ventas@emulsionesdelsur.com", phone: "+54 11 4444-3333", products: "Emulsiones fotosensibles, removedores" },
-  { id: "4", name: "MarcosYa", category: "Marcos", email: "pedidos@marcosya.com", phone: "+54 11 4444-4444", products: "Marcos de aluminio, mallas 110T-160T" },
-  { id: "5", name: "Suministros Gráficos", category: "Varios", email: "info@sumgraficos.com", phone: "+54 11 4444-5555", products: "Raseros, cintas, espátulas, adhesivos" },
+  { id: "1", name: "TintaMax", category: "Tintas", email: "ventas@tintamax.com", phone: "+54 11 4444-1111", products: "Tintas plastisol, base agua, sublimación", direccion: "Av. San Martín 450, Buenos Aires", createdAt: "12 ene 2025" },
+  { id: "2", name: "TextilPro", category: "Camisetas", email: "info@textilpro.com", phone: "+54 11 4444-2222", products: "Camisetas, polos, buzos, remeras", direccion: "Calle Rivadavia 1200, Córdoba", createdAt: "3 feb 2025" },
+  { id: "3", name: "Emulsiones del Sur", category: "Emulsiones", email: "ventas@emulsionesdelsur.com", phone: "+54 11 4444-3333", products: "Emulsiones fotosensibles, removedores", direccion: "Ruta 8 km 42, Rosario", createdAt: "20 feb 2025" },
+  { id: "4", name: "MarcosYa", category: "Marcos", email: "pedidos@marcosya.com", phone: "+54 11 4444-4444", products: "Marcos de aluminio, mallas 110T-160T", direccion: "Parque Industrial Norte, Mendoza", createdAt: "5 mar 2025" },
+  { id: "5", name: "Suministros Gráficos", category: "Varios", email: "info@sumgraficos.com", phone: "+54 11 4444-5555", products: "Raseros, cintas, espátulas, adhesivos", direccion: "Av. Colón 780, Tucumán", createdAt: "18 mar 2025" },
 ];
 
 export const kanbanColumns: { id: string; title: string; colorClass: string }[] = [
