@@ -19,19 +19,40 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { pedidosColumns } from "@/data/mockData";
-import { KanbanCard } from "@/data/mockData";
+import { Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import ClientTypeahead from "@/components/ui/ClientTypeahead";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+/** Row shape returned by a Supabase INSERT into `pedidos`. */
+export interface PedidoDB {
+  id: string;
+  nombre_pedido: string;
+  cliente_id: string | null;
+  descripcion: string | null;
+  valor_pedido: number | null;
+  etapa_pedido: string;
+  fecha_entrega: string | null;
+  nivel_prioridad: string;
+  created_at: string;
+  // Joined from clientes
+  clientes?: { nombre: string; correo?: string; numero?: string } | null;
+}
 
 interface CreateOrderPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateOrder: (card: KanbanCard, etapa: string) => void;
+  /** Called after a new order is successfully inserted in Supabase */
+  onOrderCreated: (order: PedidoDB) => void;
 }
 
 interface OrderForm {
   nombre: string;
-  cliente: string;
+  clienteId: string;
+  clienteNombre: string;
   descripcion: string;
-  ingreso: string;
+  valorPedido: string;
   etapa: string;
   fechaEntrega: string;
   prioridad: string;
@@ -39,22 +60,31 @@ interface OrderForm {
 
 const emptyForm: OrderForm = {
   nombre: "",
-  cliente: "",
+  clienteId: "",
+  clienteNombre: "",
   descripcion: "",
-  ingreso: "",
+  valorPedido: "",
   etapa: "en_cola",
   fechaEntrega: "",
   prioridad: "media",
 };
 
-export default function CreateOrderPanel({ open, onOpenChange, onCreateOrder }: CreateOrderPanelProps) {
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export default function CreateOrderPanel({
+  open,
+  onOpenChange,
+  onOrderCreated,
+}: CreateOrderPanelProps) {
   const [form, setForm] = useState<OrderForm>(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isValid =
     form.nombre.trim() !== "" &&
-    form.cliente.trim() !== "" &&
+    form.clienteId !== "" &&
     form.descripcion.trim() !== "" &&
-    form.ingreso.trim() !== "" &&
+    form.valorPedido.trim() !== "" &&
     form.etapa !== "" &&
     form.fechaEntrega !== "" &&
     form.prioridad !== "";
@@ -63,19 +93,40 @@ export default function CreateOrderPanel({ open, onOpenChange, onCreateOrder }: 
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleSubmit() {
-    const newCard: KanbanCard = {
-      id: `order-${Date.now()}`,
-      title: form.nombre.trim(),
-      client: form.cliente.trim(),
-      quantity: 0,
-      priority: form.prioridad as "baja" | "media" | "alta",
-      dueDate: form.fechaEntrega,
-      ingreso: parseFloat(form.ingreso),
-      descripcion: form.descripcion.trim(),
-    };
-    onCreateOrder(newCard, form.etapa);
+  function handleClientSelect(id: string, nombre: string) {
+    setForm((prev) => ({ ...prev, clienteId: id, clienteNombre: nombre }));
+  }
+
+  async function handleSubmit() {
+    if (!isValid || saving) return;
+
+    setSaving(true);
+    setError(null);
+
+    const { data, error: sbError } = await supabase
+      .from("pedidos")
+      .insert({
+        nombre_pedido: form.nombre.trim(),
+        cliente_id: form.clienteId,
+        descripcion: form.descripcion.trim(),
+        valor_pedido: parseFloat(form.valorPedido),
+        etapa_pedido: form.etapa,
+        fecha_entrega: form.fechaEntrega,
+        nivel_prioridad: form.prioridad,
+      })
+      .select("*, clientes(nombre)")
+      .single();
+
+    if (sbError) {
+      setError(sbError.message);
+      setSaving(false);
+      return;
+    }
+
+    // Notify parent with the inserted row
+    onOrderCreated(data as PedidoDB);
     setForm(emptyForm);
+    setSaving(false);
     onOpenChange(false);
   }
 
@@ -105,16 +156,15 @@ export default function CreateOrderPanel({ open, onOpenChange, onCreateOrder }: 
             />
           </div>
 
-          {/* Cliente */}
+          {/* Cliente — Typeahead con búsqueda real en Supabase */}
           <div className="space-y-1.5">
             <Label htmlFor="order-cliente">
               Cliente <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <ClientTypeahead
               id="order-cliente"
-              placeholder="Ej. Tech Solutions"
-              value={form.cliente}
-              onChange={(e) => handleChange("cliente", e.target.value)}
+              onSelect={handleClientSelect}
+              key={open ? "open" : "closed"} // reset when panel re-opens
             />
           </div>
 
@@ -133,7 +183,7 @@ export default function CreateOrderPanel({ open, onOpenChange, onCreateOrder }: 
             />
           </div>
 
-          {/* Ingreso esperado */}
+          {/* Valor del pedido */}
           <div className="space-y-1.5">
             <Label htmlFor="order-ingreso">
               Valor del pedido (MXN) <span className="text-destructive">*</span>
@@ -143,8 +193,8 @@ export default function CreateOrderPanel({ open, onOpenChange, onCreateOrder }: 
               type="number"
               min={0}
               placeholder="Ej. 15000"
-              value={form.ingreso}
-              onChange={(e) => handleChange("ingreso", e.target.value)}
+              value={form.valorPedido}
+              onChange={(e) => handleChange("valorPedido", e.target.value)}
             />
           </div>
 
@@ -202,16 +252,30 @@ export default function CreateOrderPanel({ open, onOpenChange, onCreateOrder }: 
               </SelectContent>
             </Select>
           </div>
+
+          {/* Error message */}
+          {error && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-destructive text-sm">
+              {error}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <SheetFooter className="px-6 py-4 border-t">
           <Button
             className="w-full"
-            disabled={!isValid}
+            disabled={!isValid || saving}
             onClick={handleSubmit}
           >
-            Crear pedido
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Guardando...
+              </>
+            ) : (
+              "Crear pedido"
+            )}
           </Button>
         </SheetFooter>
       </SheetContent>
