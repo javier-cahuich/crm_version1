@@ -1,19 +1,13 @@
 import { Input } from "@/components/ui/input";
-import { Search, Loader2, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, Loader2, AlertCircle, UserPlus } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useState, useEffect } from "react";
+import CreateClientePanel, { ClienteDB } from "@/components/clientes/CreateClientePanel";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-/** Mirrors the `clientes` table in Supabase exactly. */
-interface ClienteDB {
-  id: string;
-  nombre: string;
-  correo: string;
-  numero: string | null;
-  direccion: string | null;
-  created_at: string | null;
-}
+/** Mirrors the `clientes` table in Supabase exactly. Re-exported from CreateClientePanel. */
 
 /** Shape used by the UI layer. */
 interface ClienteUI {
@@ -53,6 +47,12 @@ export default function Clientes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  /** Prepend new client to the list without re-fetching. */
+  function handleClienteCreado(nuevo: ClienteDB) {
+    setClientes((prev) => [mapClienteDBToUI(nuevo), ...prev]);
+  }
 
   useEffect(() => {
     async function fetchClientes() {
@@ -94,14 +94,23 @@ export default function Clientes() {
             {loading ? "Cargando..." : `${clientes.length} clientes registrados`}
           </p>
         </div>
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar cliente..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => setPanelOpen(true)}
+            className="flex items-center gap-2 whitespace-nowrap"
+          >
+            <UserPlus className="h-4 w-4" />
+            Agregar cliente
+          </Button>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar cliente..."
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
@@ -160,6 +169,11 @@ export default function Clientes() {
           </table>
         </div>
       )}
+      <CreateClientePanel
+        open={panelOpen}
+        onOpenChange={setPanelOpen}
+        onClienteCreado={handleClienteCreado}
+      />
     </div>
   );
 }
