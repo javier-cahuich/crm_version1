@@ -107,3 +107,43 @@
   .kanban-col-trato-cerrado { border-top-color: hsl(var(--kanban-trato-cerrado)); }
   .kanban-col-trato-perdido { border-top-color: hsl(var(--kanban-trato-perdido)); }
 }
+
+/* ── Print styles for PDF export ─────────────────────────────────────────── */
+@media print {
+  /* Hide sidebar & header */
+  [data-sidebar],
+  header,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Full-width main content */
+  body, html {
+    background: white !important;
+    color: black !important;
+    font-size: 11px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  .min-h-screen {
+    min-height: auto !important;
+  }
+
+  /* Cards: remove shadows, ensure borders */
+  [class*="rounded-"] {
+    box-shadow: none !important;
+  }
+
+  /* Page margins */
+  @page {
+    margin: 1.5cm;
+    size: A4 landscape;
+  }
+}

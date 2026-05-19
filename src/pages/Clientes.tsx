@@ -1,57 +1,535 @@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Loader2, AlertCircle, UserPlus } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Search,
+  Loader2,
+  AlertCircle,
+  UserPlus,
+  Trash2,
+  AlertTriangle,
+  Pencil,
+  Save,
+  X,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  Calendar,
+  ShoppingBag,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useState, useEffect } from "react";
-import CreateClientePanel, { ClienteDB } from "@/components/clientes/CreateClientePanel";
+import CreateClientePanel, {
+  ClienteDB,
+} from "@/components/clientes/CreateClientePanel";
+import ContactClientModal from "@/components/ui/ContactClientModal";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Sub-componente: fila de detalle ──────────────────────────────────────────
+function DetailRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3 py-2.5 border-b border-border/60 last:border-0">
+      <span className="mt-0.5 text-muted-foreground shrink-0">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
+          {label}
+        </p>
+        <div className="text-sm font-medium text-foreground">{value}</div>
+      </div>
+    </div>
+  );
+}
 
-/** Mirrors the `clientes` table in Supabase exactly. Re-exported from CreateClientePanel. */
+// ── Diálogo de confirmación de eliminación ────────────────────────────────────
+function DeleteConfirmDialog({
+  open,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
+      <DialogContent
+        className="max-w-sm p-6 space-y-4 gap-0 rounded-xl"
+        hideCloseButton
+      >
+        <div className="flex items-center gap-3">
+          <span className="flex items-center justify-center w-10 h-10 rounded-full bg-destructive/10 text-destructive shrink-0">
+            <AlertTriangle className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="font-semibold text-sm">Eliminar cliente</p>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              ¿Seguro que quieres eliminarlo? Esta acción no se puede deshacer.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end pt-1">
+          <Button variant="outline" size="sm" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm}>
+            Sí, eliminar
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-/** Shape used by the UI layer. */
-interface ClienteUI {
+// ── Tipos e info para historial de pedidos ───────────────────────────────────
+
+interface PedidoHistorial {
   id: string;
+  nombre_pedido: string;
+  valor_pedido: number | null;
+  etapa_pedido: string | null;
+  fecha_entrega: string | null;
+  created_at: string;
+}
+
+const stageLabels: Record<string, string> = {
+  en_cola: "En cola",
+  en_curso: "En curso",
+  control_calidad: "Control de calidad",
+  listo_entrega: "Listo para entrega",
+  entregado: "Entregado",
+};
+
+const stageColors: Record<string, string> = {
+  en_cola: "bg-blue-100 text-blue-700 border-blue-200",
+  en_curso: "bg-amber-100 text-amber-700 border-amber-200",
+  control_calidad: "bg-violet-100 text-violet-700 border-violet-200",
+  listo_entrega: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  entregado: "bg-slate-100 text-slate-600 border-slate-200",
+};
+
+// ── Modal de detalle del cliente ──────────────────────────────────────────────
+
+interface ClienteForm {
   nombre: string;
   correo: string;
   numero: string;
   direccion: string;
-  createdAt: string; // human-readable
 }
 
-// ── Mapper ────────────────────────────────────────────────────────────────────
+const emptyEditForm: ClienteForm = {
+  nombre: "",
+  correo: "",
+  numero: "",
+  direccion: "",
+};
 
-function mapClienteDBToUI(db: ClienteDB): ClienteUI {
-  const fecha = db.created_at
-    ? new Date(db.created_at).toLocaleDateString("es-ES", {
+function ClientDetailModal({
+  cliente,
+  open,
+  onClose,
+  onDelete,
+  onUpdate,
+}: {
+  cliente: ClienteDB | null;
+  open: boolean;
+  onClose: () => void;
+  onDelete: (id: string) => void;
+  onUpdate: (updated: ClienteDB) => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState<ClienteForm>(emptyEditForm);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // ── Historial de pedidos ────────────────────────────────────────────────────
+  const [pedidos, setPedidos] = useState<PedidoHistorial[]>([]);
+  const [pedidosLoading, setPedidosLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open || !cliente) {
+      setPedidos([]);
+      return;
+    }
+
+    async function fetchPedidos() {
+      setPedidosLoading(true);
+      const { data } = await supabase
+        .from("pedidos")
+        .select("id, nombre_pedido, valor_pedido, etapa_pedido, fecha_entrega, created_at")
+        .eq("cliente_id", cliente!.id)
+        .order("created_at", { ascending: false });
+
+      setPedidos((data as PedidoHistorial[]) ?? []);
+      setPedidosLoading(false);
+    }
+
+    fetchPedidos();
+  }, [open, cliente?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!cliente) return null;
+
+  const fechaFormatted = cliente.created_at
+    ? new Date(cliente.created_at).toLocaleDateString("es-MX", {
         day: "numeric",
-        month: "short",
+        month: "long",
         year: "numeric",
       })
     : "—";
 
-  return {
-    id: db.id,
-    nombre: db.nombre ?? "Sin nombre",
-    correo: db.correo ?? "—",
-    numero: db.numero ?? "—",
-    direccion: db.direccion ?? "—",
-    createdAt: fecha,
-  };
+  function enterEditMode() {
+    setEditForm({
+      nombre: cliente!.nombre,
+      correo: cliente!.correo ?? "",
+      numero: cliente!.numero ?? "",
+      direccion: cliente!.direccion ?? "",
+    });
+    setSaveError(null);
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setSaveError(null);
+  }
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+
+    const { error: sbError } = await supabase
+      .from("clientes")
+      .update({
+        nombre: editForm.nombre.trim(),
+        correo: editForm.correo.trim() || null,
+        numero: editForm.numero.trim() || null,
+        direccion: editForm.direccion.trim() || null,
+      })
+      .eq("id", cliente!.id);
+
+    if (sbError) {
+      setSaveError(sbError.message);
+      setSaving(false);
+      return;
+    }
+
+    onUpdate({
+      ...cliente!,
+      nombre: editForm.nombre.trim(),
+      correo: editForm.correo.trim() || "",
+      numero: editForm.numero.trim() || null,
+      direccion: editForm.direccion.trim() || null,
+    });
+
+    setSaving(false);
+    setEditing(false);
+  }
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(v) => {
+          if (!v) {
+            setEditing(false);
+            onClose();
+          }
+        }}
+      >
+        <DialogContent
+          className="max-w-lg w-full p-0 gap-0 overflow-hidden rounded-xl"
+          hideCloseButton
+        >
+          {/* ── Header ── */}
+          <DialogHeader className="px-5 pt-5 pb-4 border-b border-border space-y-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <DialogTitle className="text-base font-bold leading-snug pr-2">
+                  {editing ? "Editando cliente" : cliente.nombre}
+                </DialogTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {editing ? cliente.nombre : "Detalle del cliente"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {!editing && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs h-8"
+                      onClick={() => setShowContactModal(true)}
+                    >
+                      <Phone className="h-3.5 w-3.5" />
+                      Contactar
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      onClick={enterEditMode}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* ── Cuerpo ── */}
+          <div className="px-5 py-4 space-y-0 overflow-y-auto max-h-[60vh]">
+            {editing ? (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-cli-nombre">
+                    Nombre <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="edit-cli-nombre"
+                    value={editForm.nombre}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, nombre: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-cli-correo">Correo</Label>
+                  <Input
+                    id="edit-cli-correo"
+                    type="email"
+                    value={editForm.correo}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, correo: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-cli-numero">Teléfono</Label>
+                  <Input
+                    id="edit-cli-numero"
+                    value={editForm.numero}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, numero: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-cli-direccion">Dirección</Label>
+                  <Textarea
+                    id="edit-cli-direccion"
+                    value={editForm.direccion}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, direccion: e.target.value }))
+                    }
+                    rows={2}
+                    className="resize-none"
+                  />
+                </div>
+                {saveError && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-destructive text-sm">
+                    {saveError}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <DetailRow
+                  icon={<User className="h-4 w-4" />}
+                  label="Nombre"
+                  value={cliente.nombre}
+                />
+                <DetailRow
+                  icon={<Mail className="h-4 w-4" />}
+                  label="Correo"
+                  value={cliente.correo || "Sin correo registrado"}
+                />
+                <DetailRow
+                  icon={<Phone className="h-4 w-4" />}
+                  label="Teléfono"
+                  value={cliente.numero || "Sin teléfono registrado"}
+                />
+                <DetailRow
+                  icon={<MapPin className="h-4 w-4" />}
+                  label="Dirección"
+                  value={cliente.direccion || "Sin dirección registrada"}
+                />
+                <DetailRow
+                  icon={<Calendar className="h-4 w-4" />}
+                  label="Fecha de alta"
+                  value={fechaFormatted}
+                />
+
+                {/* ── Historial de Pedidos ── */}
+                <div className="mt-5 pt-4 border-t border-border">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm font-semibold">Historial de Pedidos</p>
+                  </div>
+
+                  {pedidosLoading && (
+                    <div className="flex items-center justify-center py-6 text-muted-foreground gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-xs">Cargando pedidos...</span>
+                    </div>
+                  )}
+
+                  {!pedidosLoading && pedidos.length === 0 && (
+                    <div className="py-6 text-center text-muted-foreground text-xs rounded-lg border border-dashed border-border bg-muted/30">
+                      Este cliente aún no tiene un historial de pedidos registrado.
+                    </div>
+                  )}
+
+                  {!pedidosLoading && pedidos.length > 0 && (
+                    <div className="rounded-lg border border-border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border bg-muted/50">
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Pedido</th>
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Valor</th>
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Etapa</th>
+                            <th className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Entrega</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pedidos.map((p, idx) => {
+                            const etapa = p.etapa_pedido ?? "";
+                            const etapaLabel = stageLabels[etapa] ?? etapa;
+                            const etapaColor = stageColors[etapa] ?? "bg-muted text-muted-foreground border-border";
+                            const valor = p.valor_pedido != null
+                              ? p.valor_pedido.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })
+                              : "—";
+                            const fecha = p.fecha_entrega
+                              ? new Date(p.fecha_entrega + "T00:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })
+                              : "—";
+
+                            return (
+                              <tr
+                                key={p.id}
+                                className={`border-b border-border last:border-0 transition-colors ${
+                                  idx % 2 === 0 ? "bg-background" : "bg-muted/10"
+                                }`}
+                              >
+                                <td className="px-3 py-2 font-medium max-w-[140px] truncate">{p.nombre_pedido}</td>
+                                <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{valor}</td>
+                                <td className="px-3 py-2">
+                                  <Badge variant="outline" className={`text-[10px] font-medium ${etapaColor}`}>
+                                    {etapaLabel}
+                                  </Badge>
+                                </td>
+                                <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{fecha}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ── Footer ── */}
+          <div className="px-5 py-3 border-t border-border flex justify-end gap-2">
+            {editing ? (
+              <>
+                <Button variant="outline" size="sm" onClick={cancelEdit}>
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={!editForm.nombre.trim() || saving}
+                  onClick={handleSave}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-3.5 w-3.5" />
+                      Guardar cambios
+                    </>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={onClose}>
+                <X className="h-3.5 w-3.5 mr-1.5" />
+                Cerrar
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <DeleteConfirmDialog
+        open={confirmDelete}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          onDelete(cliente.id);
+          onClose();
+        }}
+      />
+
+      <ContactClientModal
+        open={showContactModal}
+        onClose={() => setShowContactModal(false)}
+        clienteNombre={cliente.nombre}
+        clienteCorreo={cliente.correo || undefined}
+        clienteNumero={cliente.numero || undefined}
+      />
+    </>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Clientes() {
-  const [clientes, setClientes] = useState<ClienteUI[]>([]);
+  const [clientes, setClientes] = useState<ClienteDB[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
 
-  /** Prepend new client to the list without re-fetching. */
+  // Detail modal
+  const [selectedCliente, setSelectedCliente] = useState<ClienteDB | null>(
+    null
+  );
+  const [modalOpen, setModalOpen] = useState(false);
+
   function handleClienteCreado(nuevo: ClienteDB) {
-    setClientes((prev) => [mapClienteDBToUI(nuevo), ...prev]);
+    setClientes((prev) => [nuevo, ...prev]);
   }
 
   useEffect(() => {
@@ -67,7 +545,7 @@ export default function Clientes() {
       if (sbError) {
         setError(sbError.message);
       } else {
-        setClientes((data as ClienteDB[]).map(mapClienteDBToUI));
+        setClientes((data as ClienteDB[]) ?? []);
       }
 
       setLoading(false);
@@ -76,11 +554,31 @@ export default function Clientes() {
     fetchClientes();
   }, []);
 
-  const filtered = clientes.filter(
-    (c) =>
-      c.nombre.toLowerCase().includes(search.toLowerCase()) ||
-      c.correo.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = clientes.filter((c) => {
+    const q = search.toLowerCase();
+    return (
+      c.nombre.toLowerCase().includes(q) ||
+      (c.correo?.toLowerCase().includes(q) ?? false) ||
+      (c.numero?.toLowerCase().includes(q) ?? false) ||
+      (c.direccion?.toLowerCase().includes(q) ?? false)
+    );
+  });
+
+  // ── Delete handler ─────────────────────────────────────────────────────────
+
+  async function handleDelete(id: string) {
+    await supabase.from("clientes").delete().eq("id", id);
+    setClientes((prev) => prev.filter((c) => c.id !== id));
+  }
+
+  // ── Update handler ─────────────────────────────────────────────────────────
+
+  function handleUpdate(updated: ClienteDB) {
+    setClientes((prev) =>
+      prev.map((c) => (c.id === updated.id ? updated : c))
+    );
+    setSelectedCliente(updated);
+  }
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -91,7 +589,9 @@ export default function Clientes() {
         <div>
           <h1 className="text-2xl font-bold">Clientes</h1>
           <p className="text-muted-foreground text-sm">
-            {loading ? "Cargando..." : `${clientes.length} clientes registrados`}
+            {loading
+              ? "Cargando..."
+              : `${clientes.length} cliente${clientes.length !== 1 ? "s" : ""} registrado${clientes.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -133,7 +633,9 @@ export default function Clientes() {
       {/* Empty state */}
       {!loading && !error && filtered.length === 0 && (
         <div className="py-16 text-center text-muted-foreground text-sm">
-          {search ? "No se encontraron clientes con esa búsqueda." : "No hay clientes registrados aún."}
+          {search
+            ? "No se encontraron clientes con esa búsqueda."
+            : "No hay clientes registrados aún."}
         </div>
       )}
 
@@ -143,36 +645,77 @@ export default function Clientes() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Nombre</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Correo</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Teléfono</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Dirección</th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">Fecha de alta</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                  Nombre
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                  Correo
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                  Teléfono
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                  Dirección
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">
+                  Fecha de alta
+                </th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((cliente, index) => (
                 <tr
                   key={cliente.id}
-                  className={`border-b border-border last:border-0 transition-colors hover:bg-muted/40 ${
+                  className={`border-b border-border last:border-0 transition-colors hover:bg-muted/40 cursor-pointer ${
                     index % 2 === 0 ? "bg-background" : "bg-muted/10"
                   }`}
+                  onClick={() => {
+                    setSelectedCliente(cliente);
+                    setModalOpen(true);
+                  }}
                 >
                   <td className="px-4 py-3 font-medium">{cliente.nombre}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{cliente.correo}</td>
-                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{cliente.numero}</td>
-                  <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{cliente.direccion}</td>
-                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{cliente.createdAt}</td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {cliente.correo || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                    {cliente.numero || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">
+                    {cliente.direccion || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                    {cliente.created_at
+                      ? new Date(cliente.created_at).toLocaleDateString(
+                          "es-MX",
+                          {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          }
+                        )
+                      : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
       <CreateClientePanel
         open={panelOpen}
         onOpenChange={setPanelOpen}
         onClienteCreado={handleClienteCreado}
+      />
+
+      {/* Client Detail Modal */}
+      <ClientDetailModal
+        cliente={selectedCliente}
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onDelete={handleDelete}
+        onUpdate={handleUpdate}
       />
     </div>
   );

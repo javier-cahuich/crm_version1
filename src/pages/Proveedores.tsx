@@ -35,6 +35,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import ContactClientModal from "@/components/ui/ContactClientModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -136,6 +137,7 @@ function ProveedorDetailModal({
   onUpdate: (updated: ProveedorDB) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<ProveedorForm>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -226,6 +228,15 @@ function ProveedorDetailModal({
               <div className="flex items-center gap-2 shrink-0">
                 {!editing && (
                   <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs h-8"
+                      onClick={() => setShowContactModal(true)}
+                    >
+                      <Phone className="h-3.5 w-3.5" />
+                      Contactar
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -378,6 +389,14 @@ function ProveedorDetailModal({
           onDelete(proveedor.id);
           onClose();
         }}
+      />
+
+      <ContactClientModal
+        open={showContactModal}
+        onClose={() => setShowContactModal(false)}
+        clienteNombre={proveedor.nombre}
+        clienteCorreo={proveedor.correo || undefined}
+        clienteNumero={proveedor.numero || undefined}
       />
     </>
   );
