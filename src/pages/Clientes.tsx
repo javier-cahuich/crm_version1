@@ -28,8 +28,21 @@ import {
   Upload,
   FileSpreadsheet,
   CheckCircle2,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useState, useEffect, useRef } from "react";
 import CreateClientePanel, {
   ClienteDB,
@@ -556,18 +569,28 @@ interface ImportResult {
   errors: string[];
 }
 
+export interface ClienteLocal extends ClienteDB {
+  aportacion: number;
+}
+
 export default function Clientes() {
-  const [clientes, setClientes] = useState<ClienteDB[]>([]);
+  const [clientes, setClientes] = useState<ClienteLocal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
 
   // Detail modal
-  const [selectedCliente, setSelectedCliente] = useState<ClienteDB | null>(
+  const [selectedCliente, setSelectedCliente] = useState<ClienteLocal | null>(
     null
   );
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Pagination & Sorting state
+  const ITEMS_PER_PAGE = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<"nombre" | "aportacion" | "created_at">("created_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   // Import state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -576,7 +599,8 @@ export default function Clientes() {
   const [importResultOpen, setImportResultOpen] = useState(false);
 
   function handleClienteCreado(nuevo: ClienteDB) {
-    setClientes((prev) => [nuevo, ...prev]);
+    const local = { ...nuevo, aportacion: 0 } as ClienteLocal;
+    setClientes((prev) => [local, ...prev]);
   }
 
   useEffect(() => {
@@ -586,13 +610,26 @@ export default function Clientes() {
 
       const { data, error: sbError } = await supabase
         .from("clientes")
-        .select("id, nombre, correo, numero, direccion, created_at")
+        .select("id, nombre, correo, numero, direccion, created_at, pedidos(valor_pedido)")
         .order("created_at", { ascending: false });
 
       if (sbError) {
         setError(sbError.message);
       } else {
-        setClientes((data as ClienteDB[]) ?? []);
+        const mapped = (data || []).map((c: any) => {
+          const pedidos = c.pedidos || [];
+          const aportacion = pedidos.reduce((acc: number, p: any) => acc + (p.valor_pedido || 0), 0);
+          return {
+            id: c.id,
+            nombre: c.nombre,
+            correo: c.correo,
+            numero: c.numero,
+            direccion: c.direccion,
+            created_at: c.created_at,
+            aportacion,
+          } as ClienteLocal;
+        });
+        setClientes(mapped);
       }
 
       setLoading(false);
@@ -600,6 +637,11 @@ export default function Clientes() {
 
     fetchClientes();
   }, []);
+
+  // Reset pagination on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, sortBy, sortOrder]);
 
   const filtered = clientes.filter((c) => {
     const q = search.toLowerCase();
@@ -622,10 +664,31 @@ export default function Clientes() {
 
   function handleUpdate(updated: ClienteDB) {
     setClientes((prev) =>
-      prev.map((c) => (c.id === updated.id ? updated : c))
+      prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
     );
-    setSelectedCliente(updated);
+    setSelectedCliente((prev) => prev ? { ...prev, ...updated } : null);
   }
+
+  // ── Sorting and Pagination ──────────────────────────────────────────────────
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0;
+    if (sortBy === "nombre") {
+      cmp = a.nombre.localeCompare(b.nombre);
+    } else if (sortBy === "created_at") {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      cmp = timeA - timeB;
+    } else if (sortBy === "aportacion") {
+      cmp = a.aportacion - b.aportacion;
+    }
+    return sortOrder === "asc" ? cmp : -cmp;
+  });
+
+  const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE) || 1;
+  const paginated = sorted.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   // ── Import handler ─────────────────────────────────────────────────────────
 
@@ -704,7 +767,8 @@ export default function Clientes() {
         errors.push(`Error en lote ${Math.floor(i / BATCH) + 1}: ${sbError.message}`);
       } else if (data) {
         inserted += data.length;
-        setClientes((prev) => [...(data as ClienteDB[]), ...prev]);
+        const mapped = data.map((d: any) => ({ ...d, aportacion: 0 } as ClienteLocal));
+        setClientes((prev) => [...mapped, ...prev]);
       }
     }
 
@@ -806,6 +870,28 @@ export default function Clientes() {
               </>
             )}
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <ArrowUpDown className="h-4 w-4" />
+                Ordenar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel className="text-xs">Ordenar por</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={sortBy} onValueChange={(val: any) => setSortBy(val)}>
+                <DropdownMenuRadioItem value="nombre">Alfabético</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="aportacion">Aportación</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="created_at">Fecha de alta</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs">Orden</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={sortOrder} onValueChange={(val: any) => setSortOrder(val)}>
+                <DropdownMenuRadioItem value="desc">Mayor a menor / Recientes</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="asc">Menor a mayor / Antiguos</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -845,65 +931,99 @@ export default function Clientes() {
 
       {/* Clients table */}
       {!loading && !error && filtered.length > 0 && (
-        <div className="w-full overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
-                  Nombre
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
-                  Correo
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
-                  Teléfono
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
-                  Dirección
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">
-                  Fecha de alta
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((cliente, index) => (
-                <tr
-                  key={cliente.id}
-                  className={`border-b border-border last:border-0 transition-colors hover:bg-muted/40 cursor-pointer ${
-                    index % 2 === 0 ? "bg-background" : "bg-muted/10"
-                  }`}
-                  onClick={() => {
-                    setSelectedCliente(cliente);
-                    setModalOpen(true);
-                  }}
-                >
-                  <td className="px-4 py-3 font-medium">{cliente.nombre}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {cliente.correo || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                    {cliente.numero || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">
-                    {cliente.direccion || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                    {cliente.created_at
-                      ? new Date(cliente.created_at).toLocaleDateString(
-                          "es-MX",
-                          {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          }
-                        )
-                      : "—"}
-                  </td>
+        <div className="space-y-4">
+          <div className="w-full overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Nombre
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Correo
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Teléfono
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Dirección
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Aportación
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">
+                    Fecha de alta
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {paginated.map((cliente, index) => (
+                  <tr
+                    key={cliente.id}
+                    className={`border-b border-border last:border-0 transition-colors hover:bg-muted/40 cursor-pointer ${
+                      index % 2 === 0 ? "bg-background" : "bg-muted/10"
+                    }`}
+                    onClick={() => {
+                      setSelectedCliente(cliente);
+                      setModalOpen(true);
+                    }}
+                  >
+                    <td className="px-4 py-3 font-medium">{cliente.nombre}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {cliente.correo || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      {cliente.numero || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">
+                      {cliente.direccion || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      {cliente.aportacion.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      {cliente.created_at
+                        ? new Date(cliente.created_at).toLocaleDateString(
+                            "es-MX",
+                            {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            }
+                          )
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Mostrando {Math.min(filtered.length, (currentPage - 1) * ITEMS_PER_PAGE + 1)} - {Math.min(filtered.length, currentPage * ITEMS_PER_PAGE)} de {filtered.length} clientes
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Siguiente
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
