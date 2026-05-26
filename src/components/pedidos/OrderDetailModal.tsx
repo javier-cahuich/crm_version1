@@ -42,8 +42,8 @@ const stageLabels: Record<string, string> = {
   en_cola: "Pedidos en cola",
   en_curso: "En curso",
   control_calidad: "Control de calidad",
-  listo_entrega: "Listo para entrega",
-  entregado: "Entregado",
+  // listo_entrega: "Listo para entrega",
+  // entregado: "Entregado",
 };
 
 const stageColors: Record<string, string> = {
@@ -180,18 +180,18 @@ export default function OrderDetailModal({
   const valorFormatted =
     order.ingreso !== undefined
       ? order.ingreso.toLocaleString("es-MX", {
-          style: "currency",
-          currency: "MXN",
-          maximumFractionDigits: 0,
-        })
+        style: "currency",
+        currency: "MXN",
+        maximumFractionDigits: 0,
+      })
       : "No especificado";
 
   const fechaFormatted = order.dueDate
     ? new Date(order.dueDate + "T00:00:00").toLocaleDateString("es-MX", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    })
     : "No especificada";
 
   function enterEditMode() {
