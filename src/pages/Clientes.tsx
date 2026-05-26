@@ -25,13 +25,31 @@ import {
   MapPin,
   Calendar,
   ShoppingBag,
+  Upload,
+  FileSpreadsheet,
+  CheckCircle2,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { useState, useEffect } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useState, useEffect, useRef } from "react";
 import CreateClientePanel, {
   ClienteDB,
 } from "@/components/clientes/CreateClientePanel";
 import ContactClientModal from "@/components/ui/ContactClientModal";
+import Papa from "papaparse";
+import * as XLSX from "xlsx";
 
 // ── Sub-componente: fila de detalle ──────────────────────────────────────────
 function DetailRow({
@@ -515,21 +533,74 @@ function ClientDetailModal({
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+// ── Column mapping helpers ────────────────────────────────────────────────────
+
+const COLUMN_MAP: Record<string, keyof Pick<ClienteDB, "nombre" | "correo" | "numero" | "direccion">> = {
+  nombre: "nombre",
+  name: "nombre",
+  "nombre del cliente": "nombre",
+  cliente: "nombre",
+  correo: "correo",
+  email: "correo",
+  "correo electrónico": "correo",
+  "correo electronico": "correo",
+  "e-mail": "correo",
+  telefono: "numero",
+  teléfono: "numero",
+  numero: "numero",
+  número: "numero",
+  celular: "numero",
+  phone: "numero",
+  tel: "numero",
+  direccion: "direccion",
+  dirección: "direccion",
+  domicilio: "direccion",
+  address: "direccion",
+};
+
+function mapColumnName(raw: string): keyof Pick<ClienteDB, "nombre" | "correo" | "numero" | "direccion"> | null {
+  const key = raw.trim().toLowerCase().replace(/[\s_]+/g, " ");
+  return COLUMN_MAP[key] ?? null;
+}
+
+interface ImportResult {
+  inserted: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface ClienteLocal extends ClienteDB {
+  aportacion: number;
+}
+
 export default function Clientes() {
-  const [clientes, setClientes] = useState<ClienteDB[]>([]);
+  const [clientes, setClientes] = useState<ClienteLocal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
 
   // Detail modal
-  const [selectedCliente, setSelectedCliente] = useState<ClienteDB | null>(
+  const [selectedCliente, setSelectedCliente] = useState<ClienteLocal | null>(
     null
   );
   const [modalOpen, setModalOpen] = useState(false);
 
+  // Pagination & Sorting state
+  const ITEMS_PER_PAGE = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<"nombre" | "aportacion" | "created_at">("created_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  // Import state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importResultOpen, setImportResultOpen] = useState(false);
+
   function handleClienteCreado(nuevo: ClienteDB) {
-    setClientes((prev) => [nuevo, ...prev]);
+    const local = { ...nuevo, aportacion: 0 } as ClienteLocal;
+    setClientes((prev) => [local, ...prev]);
   }
 
   useEffect(() => {
@@ -539,13 +610,26 @@ export default function Clientes() {
 
       const { data, error: sbError } = await supabase
         .from("clientes")
-        .select("id, nombre, correo, numero, direccion, created_at")
+        .select("id, nombre, correo, numero, direccion, created_at, pedidos(valor_pedido)")
         .order("created_at", { ascending: false });
 
       if (sbError) {
         setError(sbError.message);
       } else {
-        setClientes((data as ClienteDB[]) ?? []);
+        const mapped = (data || []).map((c: any) => {
+          const pedidos = c.pedidos || [];
+          const aportacion = pedidos.reduce((acc: number, p: any) => acc + (p.valor_pedido || 0), 0);
+          return {
+            id: c.id,
+            nombre: c.nombre,
+            correo: c.correo,
+            numero: c.numero,
+            direccion: c.direccion,
+            created_at: c.created_at,
+            aportacion,
+          } as ClienteLocal;
+        });
+        setClientes(mapped);
       }
 
       setLoading(false);
@@ -553,6 +637,11 @@ export default function Clientes() {
 
     fetchClientes();
   }, []);
+
+  // Reset pagination on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, sortBy, sortOrder]);
 
   const filtered = clientes.filter((c) => {
     const q = search.toLowerCase();
@@ -575,9 +664,163 @@ export default function Clientes() {
 
   function handleUpdate(updated: ClienteDB) {
     setClientes((prev) =>
-      prev.map((c) => (c.id === updated.id ? updated : c))
+      prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
     );
-    setSelectedCliente(updated);
+    setSelectedCliente((prev) => prev ? { ...prev, ...updated } : null);
+  }
+
+  // ── Sorting and Pagination ──────────────────────────────────────────────────
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0;
+    if (sortBy === "nombre") {
+      cmp = a.nombre.localeCompare(b.nombre);
+    } else if (sortBy === "created_at") {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      cmp = timeA - timeB;
+    } else if (sortBy === "aportacion") {
+      cmp = a.aportacion - b.aportacion;
+    }
+    return sortOrder === "asc" ? cmp : -cmp;
+  });
+
+  const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE) || 1;
+  const paginated = sorted.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  // ── Import handler ─────────────────────────────────────────────────────────
+
+  async function processImportRows(rows: Record<string, string>[]) {
+    if (rows.length === 0) {
+      setImportResult({ inserted: 0, skipped: 0, errors: ["El archivo no contiene filas de datos."] });
+      setImportResultOpen(true);
+      setImporting(false);
+      return;
+    }
+
+    // Map headers
+    const headers = Object.keys(rows[0]);
+    const colMapping: Record<string, keyof Pick<ClienteDB, "nombre" | "correo" | "numero" | "direccion">> = {};
+    for (const h of headers) {
+      const mapped = mapColumnName(h);
+      if (mapped) colMapping[h] = mapped;
+    }
+
+    if (!Object.values(colMapping).includes("nombre")) {
+      setImportResult({
+        inserted: 0,
+        skipped: rows.length,
+        errors: [
+          `No se encontró la columna "nombre" en el archivo. Columnas detectadas: ${headers.join(", ")}`,
+        ],
+      });
+      setImportResultOpen(true);
+      setImporting(false);
+      return;
+    }
+
+    const toInsert: { nombre: string; correo?: string; numero?: string; direccion?: string }[] = [];
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const mapped: Record<string, string> = {};
+      for (const [rawCol, dbCol] of Object.entries(colMapping)) {
+        const val = row[rawCol]?.trim();
+        if (val) mapped[dbCol] = val;
+      }
+
+      if (!mapped.nombre) {
+        skipped++;
+        continue;
+      }
+
+      toInsert.push({
+        nombre: mapped.nombre,
+        correo: mapped.correo || undefined,
+        numero: mapped.numero || undefined,
+        direccion: mapped.direccion || undefined,
+      });
+    }
+
+    if (toInsert.length === 0) {
+      setImportResult({ inserted: 0, skipped, errors: ["Ninguna fila tenía un nombre válido."] });
+      setImportResultOpen(true);
+      setImporting(false);
+      return;
+    }
+
+    // Bulk insert in batches of 100
+    let inserted = 0;
+    const BATCH = 100;
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const batch = toInsert.slice(i, i + BATCH);
+      const { data, error: sbError } = await supabase
+        .from("clientes")
+        .insert(batch)
+        .select("id, nombre, correo, numero, direccion, created_at");
+
+      if (sbError) {
+        errors.push(`Error en lote ${Math.floor(i / BATCH) + 1}: ${sbError.message}`);
+      } else if (data) {
+        inserted += data.length;
+        const mapped = data.map((d: any) => ({ ...d, aportacion: 0 } as ClienteLocal));
+        setClientes((prev) => [...mapped, ...prev]);
+      }
+    }
+
+    setImportResult({ inserted, skipped, errors });
+    setImportResultOpen(true);
+    setImporting(false);
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so the same file can be re-selected
+    e.target.value = "";
+
+    setImporting(true);
+
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
+    if (ext === "csv") {
+      Papa.parse<Record<string, string>>(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          processImportRows(results.data);
+        },
+        error: (err) => {
+          setImportResult({ inserted: 0, skipped: 0, errors: [`Error al leer CSV: ${err.message}`] });
+          setImportResultOpen(true);
+          setImporting(false);
+        },
+      });
+    } else if (ext === "xls" || ext === "xlsx") {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = evt.target?.result;
+          const workbook = XLSX.read(data, { type: "binary" });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json<Record<string, string>>(firstSheet, { defval: "" });
+          processImportRows(rows);
+        } catch (err) {
+          setImportResult({ inserted: 0, skipped: 0, errors: [`Error al leer archivo Excel: ${(err as Error).message}`] });
+          setImportResultOpen(true);
+          setImporting(false);
+        }
+      };
+      reader.readAsBinaryString(file);
+    } else {
+      setImportResult({ inserted: 0, skipped: 0, errors: ["Formato no soportado. Usa archivos .csv, .xls o .xlsx."] });
+      setImportResultOpen(true);
+      setImporting(false);
+    }
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -602,6 +845,53 @@ export default function Clientes() {
             <UserPlus className="h-4 w-4" />
             Agregar cliente
           </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.xls,.xlsx"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-2 whitespace-nowrap"
+          >
+            {importing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Importando...
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4" />
+                Importar
+              </>
+            )}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <ArrowUpDown className="h-4 w-4" />
+                Ordenar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel className="text-xs">Ordenar por</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={sortBy} onValueChange={(val: any) => setSortBy(val)}>
+                <DropdownMenuRadioItem value="nombre">Alfabético</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="aportacion">Aportación</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="created_at">Fecha de alta</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs">Orden</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={sortOrder} onValueChange={(val: any) => setSortOrder(val)}>
+                <DropdownMenuRadioItem value="desc">Mayor a menor / Recientes</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="asc">Menor a mayor / Antiguos</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -641,65 +931,99 @@ export default function Clientes() {
 
       {/* Clients table */}
       {!loading && !error && filtered.length > 0 && (
-        <div className="w-full overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
-                  Nombre
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
-                  Correo
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
-                  Teléfono
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
-                  Dirección
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">
-                  Fecha de alta
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((cliente, index) => (
-                <tr
-                  key={cliente.id}
-                  className={`border-b border-border last:border-0 transition-colors hover:bg-muted/40 cursor-pointer ${
-                    index % 2 === 0 ? "bg-background" : "bg-muted/10"
-                  }`}
-                  onClick={() => {
-                    setSelectedCliente(cliente);
-                    setModalOpen(true);
-                  }}
-                >
-                  <td className="px-4 py-3 font-medium">{cliente.nombre}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {cliente.correo || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                    {cliente.numero || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">
-                    {cliente.direccion || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                    {cliente.created_at
-                      ? new Date(cliente.created_at).toLocaleDateString(
-                          "es-MX",
-                          {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          }
-                        )
-                      : "—"}
-                  </td>
+        <div className="space-y-4">
+          <div className="w-full overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Nombre
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Correo
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Teléfono
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Dirección
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
+                    Aportación
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground whitespace-nowrap">
+                    Fecha de alta
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {paginated.map((cliente, index) => (
+                  <tr
+                    key={cliente.id}
+                    className={`border-b border-border last:border-0 transition-colors hover:bg-muted/40 cursor-pointer ${
+                      index % 2 === 0 ? "bg-background" : "bg-muted/10"
+                    }`}
+                    onClick={() => {
+                      setSelectedCliente(cliente);
+                      setModalOpen(true);
+                    }}
+                  >
+                    <td className="px-4 py-3 font-medium">{cliente.nombre}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {cliente.correo || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      {cliente.numero || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">
+                      {cliente.direccion || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      {cliente.aportacion.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      {cliente.created_at
+                        ? new Date(cliente.created_at).toLocaleDateString(
+                            "es-MX",
+                            {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            }
+                          )
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Mostrando {Math.min(filtered.length, (currentPage - 1) * ITEMS_PER_PAGE + 1)} - {Math.min(filtered.length, currentPage * ITEMS_PER_PAGE)} de {filtered.length} clientes
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Siguiente
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -717,6 +1041,64 @@ export default function Clientes() {
         onDelete={handleDelete}
         onUpdate={handleUpdate}
       />
+
+      {/* Import Result Modal */}
+      <Dialog open={importResultOpen} onOpenChange={setImportResultOpen}>
+        <DialogContent className="max-w-sm p-6 gap-0 rounded-xl" hideCloseButton>
+          <DialogHeader className="pb-4 space-y-0">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary shrink-0">
+                <FileSpreadsheet className="h-5 w-5" />
+              </span>
+              <div>
+                <DialogTitle className="text-sm font-semibold">Resultado de importación</DialogTitle>
+                <p className="text-muted-foreground text-xs mt-0.5">
+                  Resumen del proceso de importación.
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {importResult && (
+            <div className="space-y-3 pt-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-center">
+                  <p className="text-lg font-bold text-foreground">{importResult.inserted}</p>
+                  <p className="text-[11px] text-muted-foreground">Importados</p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-center">
+                  <p className="text-lg font-bold text-muted-foreground">{importResult.skipped}</p>
+                  <p className="text-[11px] text-muted-foreground">Omitidos</p>
+                </div>
+              </div>
+
+              {importResult.errors.length > 0 && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 space-y-1">
+                  {importResult.errors.map((err, i) => (
+                    <p key={i} className="text-xs text-destructive flex items-start gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      {err}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {importResult.errors.length === 0 && importResult.inserted > 0 && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                  <p className="text-xs text-emerald-600">Todos los registros se importaron correctamente.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4">
+            <Button variant="outline" size="sm" onClick={() => setImportResultOpen(false)}>
+              Cerrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

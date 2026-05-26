@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { KanbanCard } from "@/data/mockData";
 import {
   Dialog,
@@ -33,6 +33,8 @@ import {
   Pencil,
   Save,
   Loader2,
+  ImagePlus,
+  Upload,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import ContactClientModal from "@/components/ui/ContactClientModal";
@@ -152,7 +154,7 @@ export default function OrderDetailModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
 
-  // ── Edit mode state ───────────────────────────────────────────────────────
+  // ── Edit mode state ───────────────────────────────────────────────────
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     nombre: "",
@@ -163,6 +165,21 @@ export default function OrderDetailModal({
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // ── Image attachment state ────────────────────────────────────────────
+  const imgInputRef = useRef<HTMLInputElement>(null);
+  const editImgInputRef = useRef<HTMLInputElement>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [currentUrl, setCurrentUrl] = useState<string | null>(null);
+
+  // Sync currentUrl when order changes
+  useEffect(() => {
+    setCurrentUrl(order?.url_adjunto ?? null);
+    setImageFile(null);
+    setImagePreview(null);
+  }, [order?.id, order?.url_adjunto]);
 
   if (!order) return null;
 
@@ -202,19 +219,98 @@ export default function OrderDetailModal({
       fechaEntrega: order!.dueDate ?? "",
       prioridad: order!.priority ?? "media",
     });
+    // Reset edit image state to current
+    setImageFile(null);
+    setImagePreview(null);
     setSaveError(null);
     setEditing(true);
   }
 
   function cancelEdit() {
     setEditing(false);
+    setImageFile(null);
+    setImagePreview(null);
     setSaveError(null);
+  }
+
+  // ── Image helpers ─────────────────────────────────────────────────────
+
+  function handleEditImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImageFile(file);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(URL.createObjectURL(file));
+  }
+
+  function handleReadOnlyImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    // Upload immediately
+    uploadAndPersist(file);
+  }
+
+  async function uploadAndPersist(file: File) {
+    if (!order) return;
+    setUploading(true);
+
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const filePath = `pedidos/${order.id}/${Date.now()}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from("adjuntos")
+      .upload(filePath, file, { upsert: true });
+
+    if (upErr) {
+      setUploading(false);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("adjuntos")
+      .getPublicUrl(filePath);
+
+    const publicUrl = urlData?.publicUrl ?? null;
+
+    if (publicUrl) {
+      await supabase
+        .from("pedidos")
+        .update({ url_adjunto: publicUrl })
+        .eq("id", order.id);
+
+      setCurrentUrl(publicUrl);
+      if (onUpdate) {
+        onUpdate({ ...order, url_adjunto: publicUrl });
+      }
+    }
+
+    setUploading(false);
   }
 
   async function handleSave() {
     if (saving) return;
     setSaving(true);
     setSaveError(null);
+
+    // Upload new image if one was selected in edit mode
+    let newUrl = currentUrl;
+    if (imageFile && order) {
+      const ext = imageFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+      const filePath = `pedidos/${order.id}/${Date.now()}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("adjuntos")
+        .upload(filePath, imageFile, { upsert: true });
+
+      if (!upErr) {
+        const { data: urlData } = supabase.storage
+          .from("adjuntos")
+          .getPublicUrl(filePath);
+        newUrl = urlData?.publicUrl ?? currentUrl;
+      }
+    }
 
     const { error: sbError } = await supabase
       .from("pedidos")
@@ -224,6 +320,7 @@ export default function OrderDetailModal({
         valor_pedido: editForm.valor ? parseFloat(editForm.valor) : null,
         fecha_entrega: editForm.fechaEntrega || null,
         nivel_prioridad: editForm.prioridad,
+        url_adjunto: newUrl,
       })
       .eq("id", order!.id);
 
@@ -233,6 +330,8 @@ export default function OrderDetailModal({
       return;
     }
 
+    setCurrentUrl(newUrl);
+
     if (onUpdate) {
       onUpdate({
         ...order!,
@@ -241,9 +340,12 @@ export default function OrderDetailModal({
         ingreso: editForm.valor ? parseFloat(editForm.valor) : undefined,
         dueDate: editForm.fechaEntrega ?? "",
         priority: editForm.prioridad as "alta" | "media" | "baja",
+        url_adjunto: newUrl ?? undefined,
       });
     }
 
+    setImageFile(null);
+    setImagePreview(null);
     setSaving(false);
     setEditing(false);
   }
@@ -385,6 +487,45 @@ export default function OrderDetailModal({
                     {saveError}
                   </div>
                 )}
+
+                {/* Image upload in edit mode */}
+                <div className="space-y-1.5 pt-2 border-t border-border">
+                  <Label>Imagen adjunta</Label>
+                  <input
+                    ref={editImgInputRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp"
+                    className="hidden"
+                    onChange={handleEditImageSelect}
+                  />
+                  {(imagePreview || currentUrl) ? (
+                    <div className="relative rounded-lg border border-border overflow-hidden bg-muted/30">
+                      <img
+                        src={imagePreview ?? currentUrl!}
+                        alt="Vista previa"
+                        className="w-full h-36 object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => editImgInputRef.current?.click()}
+                        className="absolute bottom-2 right-2 p-1.5 rounded-md bg-background/80 border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+                        title="Cambiar imagen"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => editImgInputRef.current?.click()}
+                      className="w-full border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center gap-1.5 text-center text-muted-foreground bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer"
+                    >
+                      <ImagePlus className="h-5 w-5 opacity-50" />
+                      <span className="text-xs font-medium">Seleccionar imagen</span>
+                      <span className="text-[10px] opacity-60">JPG, PNG, WebP</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               /* ── Read-only view ── */
@@ -449,17 +590,47 @@ export default function OrderDetailModal({
                 <div className="mt-5 pt-4 border-t border-border">
                   <div className="flex items-center gap-2 mb-3">
                     <Paperclip className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-semibold">Adjuntar archivo</p>
+                    <p className="text-sm font-semibold">Imagen adjunta</p>
                   </div>
-                  <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center gap-2 text-center text-muted-foreground bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer">
-                    <Paperclip className="h-8 w-8 opacity-40" />
-                    <p className="text-sm font-medium">
-                      Arrastra archivos aquí o haz clic para seleccionar
-                    </p>
-                    <p className="text-xs opacity-70">
-                      PDF, imágenes, documentos (máx. 10 MB)
-                    </p>
-                  </div>
+                  <input
+                    ref={imgInputRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp"
+                    className="hidden"
+                    onChange={handleReadOnlyImageSelect}
+                  />
+                  {uploading ? (
+                    <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center gap-2 text-center text-muted-foreground bg-muted/30">
+                      <Loader2 className="h-6 w-6 animate-spin opacity-50" />
+                      <p className="text-xs font-medium">Subiendo imagen...</p>
+                    </div>
+                  ) : currentUrl ? (
+                    <div className="relative rounded-lg border border-border overflow-hidden bg-muted/30">
+                      <img
+                        src={currentUrl}
+                        alt="Adjunto del pedido"
+                        className="w-full h-44 object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => imgInputRef.current?.click()}
+                        className="absolute bottom-2 right-2 p-1.5 rounded-md bg-background/80 border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+                        title="Cambiar imagen"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => imgInputRef.current?.click()}
+                      className="w-full border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center gap-2 text-center text-muted-foreground bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer"
+                    >
+                      <ImagePlus className="h-8 w-8 opacity-40" />
+                      <p className="text-xs font-medium">Haz clic para adjuntar una imagen</p>
+                      <p className="text-[10px] opacity-60">JPG, PNG, WebP</p>
+                    </button>
+                  )}
                 </div>
               </>
             )}

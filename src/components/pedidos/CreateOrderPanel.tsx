@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Sheet,
   SheetContent,
@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { pedidosColumns } from "@/data/mockData";
-import { Loader2 } from "lucide-react";
+import { Loader2, ImagePlus, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import ClientTypeahead from "@/components/ui/ClientTypeahead";
 
@@ -35,6 +35,7 @@ export interface PedidoDB {
   etapa_pedido: string;
   fecha_entrega: string | null;
   nivel_prioridad: string;
+  url_adjunto: string | null;
   created_at: string;
   // Joined from clientes
   clientes?: { nombre: string; correo?: string; numero?: string } | null;
@@ -80,6 +81,12 @@ export default function CreateOrderPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Image upload state
+  const imgInputRef = useRef<HTMLInputElement>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
   const isValid =
     form.nombre.trim() !== "" &&
     form.clienteId !== "" &&
@@ -95,6 +102,44 @@ export default function CreateOrderPanel({
 
   function handleClientSelect(id: string, nombre: string) {
     setForm((prev) => ({ ...prev, clienteId: id, clienteNombre: nombre }));
+  }
+
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
+
+  function removeImage() {
+    setImageFile(null);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(null);
+  }
+
+  async function uploadImage(pedidoId: string): Promise<string | null> {
+    if (!imageFile) return null;
+    setUploading(true);
+
+    const ext = imageFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const filePath = `pedidos/${pedidoId}/${Date.now()}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from("adjuntos")
+      .upload(filePath, imageFile, { upsert: true });
+
+    if (upErr) {
+      setUploading(false);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("adjuntos")
+      .getPublicUrl(filePath);
+
+    setUploading(false);
+    return urlData?.publicUrl ?? null;
   }
 
   async function handleSubmit() {
@@ -123,9 +168,22 @@ export default function CreateOrderPanel({
       return;
     }
 
+    // Upload image if selected
+    let url_adjunto: string | null = null;
+    if (imageFile && data) {
+      url_adjunto = await uploadImage((data as PedidoDB).id);
+      if (url_adjunto) {
+        await supabase
+          .from("pedidos")
+          .update({ url_adjunto })
+          .eq("id", (data as PedidoDB).id);
+      }
+    }
+
     // Notify parent with the inserted row
-    onOrderCreated(data as PedidoDB);
+    onOrderCreated({ ...(data as PedidoDB), url_adjunto } as PedidoDB);
     setForm(emptyForm);
+    removeImage();
     setSaving(false);
     onOpenChange(false);
   }
@@ -181,6 +239,44 @@ export default function CreateOrderPanel({
               onChange={(e) => handleChange("descripcion", e.target.value)}
               className="resize-none"
             />
+          </div>
+
+          {/* Imagen adjunta */}
+          <div className="space-y-1.5">
+            <Label>Imagen adjunta</Label>
+            <input
+              ref={imgInputRef}
+              type="file"
+              accept=".jpg,.jpeg,.png,.webp"
+              className="hidden"
+              onChange={handleImageSelect}
+            />
+            {imagePreview ? (
+              <div className="relative rounded-lg border border-border overflow-hidden bg-muted/30">
+                <img
+                  src={imagePreview}
+                  alt="Vista previa"
+                  className="w-full h-40 object-contain"
+                />
+                <button
+                  type="button"
+                  onClick={removeImage}
+                  className="absolute top-2 right-2 p-1 rounded-md bg-background/80 border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => imgInputRef.current?.click()}
+                className="w-full border-2 border-dashed border-border rounded-lg p-5 flex flex-col items-center justify-center gap-1.5 text-center text-muted-foreground bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer"
+              >
+                <ImagePlus className="h-6 w-6 opacity-50" />
+                <span className="text-xs font-medium">Haz clic para seleccionar imagen</span>
+                <span className="text-[10px] opacity-60">JPG, PNG, WebP</span>
+              </button>
+            )}
           </div>
 
           {/* Valor del pedido */}

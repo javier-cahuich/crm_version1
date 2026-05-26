@@ -182,7 +182,7 @@ export default function Dashboard() {
       setStats({ totalClientes, pedidosActivos: activos.length, tratosEnProceso: tratosEnProceso.length, ingresosEntregados });
 
       setPedidosActivos(
-        activos.slice(0, 10).map((p) => ({
+        activos.map((p) => ({
           id: p.id, nombre_pedido: p.nombre_pedido,
           etapa_pedido: p.etapa_pedido ?? "en_cola",
           fecha_entrega: p.fecha_entrega, clientes: p.clientes,
@@ -587,7 +587,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {pedidosActivos.length > 0 ? (
-              <div className="overflow-x-auto">
+              <div className="max-h-[300px] overflow-y-auto overflow-x-auto pr-1">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
