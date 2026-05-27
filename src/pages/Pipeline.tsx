@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -14,59 +14,58 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { kanbanColumns, KanbanCard } from "@/data/mockData";
-import { Plus } from "lucide-react";
+import { Plus, Loader2, AlertCircle } from "lucide-react";
 import CreateDealPanel from "@/components/pipeline/CreateDealPanel";
+import type { TratoDB } from "@/components/pipeline/CreateDealPanel";
 import KanbanColumn from "@/components/pipeline/KanbanColumn";
 import KanbanCardItem from "@/components/pipeline/KanbanCardItem";
 import DealDetailModal from "@/components/pipeline/DealDetailModal";
+import { supabase } from "@/lib/supabase";
 
-// Tablero inicial con datos simulados
-const initialBoard: Record<string, KanbanCard[]> = {
-  lead: [
-    {
-      id: "deal-1",
-      title: "500 stickers vinilo",
-      client: "Cervecería Artesanal Norte",
-      quantity: 500,
-      priority: "baja",
-      dueDate: "2026-05-20",
-      ingreso: 3500,
-      descripcion: "Stickers de vinilo para botellas de edición limitada.",
-    },
-  ],
-  cotizacion: [
-    {
-      id: "deal-2",
-      title: "80 gorras bordadas",
-      client: "Farmacia Central",
-      quantity: 80,
-      priority: "media",
-      dueDate: "2026-05-15",
-      ingreso: 12000,
-      descripcion: "Gorras con logo bordado para el equipo de ventas.",
-    },
-  ],
-  aprobacion: [
-    {
-      id: "deal-3",
-      title: "200 camisetas técnicas",
-      client: "Club Deportivo Luna",
-      quantity: 200,
-      priority: "alta",
-      dueDate: "2026-05-10",
-      ingreso: 28000,
-      descripcion: "Camisetas de temporada para el torneo regional.",
-    },
-  ],
-  trato_cerrado: [],
-  trato_perdido: [],
-};
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Maps a Supabase `tratos` row into the KanbanCard shape used by the UI. */
+function tratoToCard(row: TratoDB): KanbanCard {
+  return {
+    id: row.id,
+    title: row.nombre_trato,
+    client: row.clientes?.nombre ?? "Cliente desconocido",
+    quantity: 0,
+    priority: "media",
+    dueDate: "",
+    ingreso: row.ingreso_esperado ?? undefined,
+    descripcion: row.descripcion ?? undefined,
+    clienteId: row.cliente_id ?? undefined,
+    clienteCorreo: row.clientes?.correo ?? undefined,
+    clienteNumero: row.clientes?.numero ?? undefined,
+    url_adjunto: row.url_adjunto ?? undefined,
+  };
+}
+
+/** Builds the board record from a flat list of tratos. */
+function buildBoard(tratos: TratoDB[]): Record<string, KanbanCard[]> {
+  const board: Record<string, KanbanCard[]> = {};
+  for (const col of kanbanColumns) {
+    board[col.id] = [];
+  }
+  for (const t of tratos) {
+    const etapa = t.etapa_trato ?? "lead";
+    if (!board[etapa]) board[etapa] = [];
+    board[etapa].push(tratoToCard(t));
+  }
+  return board;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Pipeline() {
   const [panelOpen, setPanelOpen] = useState(false);
-  const [cards, setCards] = useState<Record<string, KanbanCard[]>>(initialBoard);
+  const [cards, setCards] = useState<Record<string, KanbanCard[]>>({});
   const [activeCard, setActiveCard] = useState<KanbanCard | null>(null);
-  const [activeColId, setActiveColId] = useState<string | null>(null);
+
+  // Loading & error states
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // ── Estado del modal de detalle ──────────────────────────────────────────
   const [selectedDeal, setSelectedDeal] = useState<(KanbanCard & { stage?: string }) | null>(null);
@@ -76,7 +75,33 @@ export default function Pipeline() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  // Encuentra en qué columna está una tarjeta dado su id
+  // ── Fetch tratos from Supabase on mount ──────────────────────────────────
+
+  useEffect(() => {
+    async function fetchTratos() {
+      setLoading(true);
+      setError(null);
+
+      const { data, error: sbError } = await supabase
+        .from("tratos")
+        .select("*, clientes(nombre, correo, numero)")
+        .order("created_at", { ascending: true });
+
+      if (sbError) {
+        setError(sbError.message);
+        setCards({});
+      } else {
+        setCards(buildBoard((data ?? []) as TratoDB[]));
+      }
+
+      setLoading(false);
+    }
+
+    fetchTratos();
+  }, []);
+
+  // ── Drag-and-drop handlers ────────────────────────────────────────────────
+
   function findColumn(cardId: string): string | null {
     for (const [colId, colCards] of Object.entries(cards)) {
       if (colCards.some((c) => c.id === cardId)) return colId;
@@ -90,7 +115,6 @@ export default function Pipeline() {
     if (!colId) return;
     const card = cards[colId].find((c) => c.id === cardId) ?? null;
     setActiveCard(card);
-    setActiveColId(colId);
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -102,7 +126,6 @@ export default function Pipeline() {
     if (activeId === overId) return;
 
     const fromCol = findColumn(activeId);
-    // El over puede ser el id de una columna o el id de una tarjeta
     const toCol =
       kanbanColumns.find((c) => c.id === overId)?.id ?? findColumn(overId);
 
@@ -118,34 +141,46 @@ export default function Pipeline() {
     });
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setActiveCard(null);
-    setActiveColId(null);
     if (!over) return;
 
     const activeId = String(active.id);
     const overId = String(over.id);
-    if (activeId === overId) return;
 
-    // Reordenar dentro de la misma columna
+    // Find the column where the card now lives
     const col = findColumn(activeId);
     if (!col) return;
-    const colCards = cards[col];
-    const oldIdx = colCards.findIndex((c) => c.id === activeId);
-    const newIdx = colCards.findIndex((c) => c.id === overId);
-    if (oldIdx !== -1 && newIdx !== -1) {
-      setCards((prev) => ({
-        ...prev,
-        [col]: arrayMove(colCards, oldIdx, newIdx),
-      }));
+
+    // Persist the new etapa_trato to Supabase
+    await supabase
+      .from("tratos")
+      .update({ etapa_trato: col })
+      .eq("id", activeId);
+
+    // Reorder within same column if needed
+    if (activeId !== overId) {
+      const colCards = cards[col];
+      const oldIdx = colCards.findIndex((c) => c.id === activeId);
+      const newIdx = colCards.findIndex((c) => c.id === overId);
+      if (oldIdx !== -1 && newIdx !== -1) {
+        setCards((prev) => ({
+          ...prev,
+          [col]: arrayMove(colCards, oldIdx, newIdx),
+        }));
+      }
     }
   }
 
-  function handleCreateDeal(newCard: KanbanCard, etapa: string) {
+  // ── Create deal callback ─────────────────────────────────────────────────
+
+  function handleDealCreated(trato: TratoDB) {
+    const card = tratoToCard(trato);
+    const etapa = trato.etapa_trato ?? "lead";
     setCards((prev) => ({
       ...prev,
-      [etapa]: [newCard, ...(prev[etapa] ?? [])],
+      [etapa]: [card, ...(prev[etapa] ?? [])],
     }));
   }
 
@@ -156,13 +191,46 @@ export default function Pipeline() {
     setModalOpen(true);
   }
 
+  // ── Delete handler ────────────────────────────────────────────────────────
+
+  async function handleDelete(id: string) {
+    await supabase.from("tratos").delete().eq("id", id);
+    setCards((prev) => {
+      const updated = { ...prev };
+      for (const col in updated) {
+        updated[col] = updated[col].filter((c) => c.id !== id);
+      }
+      return updated;
+    });
+  }
+
+  // ── Update handler (edit mode) ──────────────────────────────────────────
+
+  function handleUpdate(updatedCard: KanbanCard) {
+    setCards((prev) => {
+      const updated = { ...prev };
+      for (const col in updated) {
+        updated[col] = updated[col].map((c) =>
+          c.id === updatedCard.id ? updatedCard : c
+        );
+      }
+      return updated;
+    });
+    // Also refresh the selected deal in case the modal is still open
+    setSelectedDeal((prev) =>
+      prev && prev.id === updatedCard.id
+        ? { ...updatedCard, stage: prev.stage }
+        : prev
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Pipeline de Ventas</h1>
-          <p className="text-muted-foreground text-sm">Seguimiento de pedidos por etapa</p>
+          <p className="text-muted-foreground text-sm">Seguimiento de tratos por etapa</p>
         </div>
         <Button onClick={() => setPanelOpen(true)} className="shrink-0 gap-2">
           <Plus className="h-4 w-4" />
@@ -170,44 +238,62 @@ export default function Pipeline() {
         </Button>
       </div>
 
-      {/* Kanban Board */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
-          {kanbanColumns.map((col) => (
-            <KanbanColumn
-              key={col.id}
-              column={col}
-              cards={cards[col.id] ?? []}
-              onCardClick={handleCardClick}
-            />
-          ))}
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center justify-center py-20 text-muted-foreground gap-2">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Cargando tratos...</span>
         </div>
+      )}
 
-        {/* Ghost card while dragging */}
-        <DragOverlay>
-          {activeCard ? (
-            <div className="rotate-2 opacity-90 scale-105 shadow-2xl w-[264px]">
-              <Card className="shadow-lg">
-                <CardContent className="p-3">
-                  <KanbanCardItem card={activeCard} />
-                </CardContent>
-              </Card>
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      {/* Error state */}
+      {!loading && error && (
+        <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive text-sm">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Error al cargar tratos: {error}</span>
+        </div>
+      )}
+
+      {/* Kanban Board */}
+      {!loading && !error && (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+            {kanbanColumns.map((col) => (
+              <KanbanColumn
+                key={col.id}
+                column={col}
+                cards={cards[col.id] ?? []}
+                onCardClick={handleCardClick}
+              />
+            ))}
+          </div>
+
+          {/* Ghost card while dragging */}
+          <DragOverlay>
+            {activeCard ? (
+              <div className="rotate-2 opacity-90 scale-105 shadow-2xl w-[264px]">
+                <Card className="shadow-lg">
+                  <CardContent className="p-3">
+                    <KanbanCardItem card={activeCard} />
+                  </CardContent>
+                </Card>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       {/* Create Deal Side Panel */}
       <CreateDealPanel
         open={panelOpen}
         onOpenChange={setPanelOpen}
-        onCreateDeal={handleCreateDeal}
+        onDealCreated={handleDealCreated}
       />
 
       {/* Deal Detail Modal */}
@@ -215,6 +301,8 @@ export default function Pipeline() {
         deal={selectedDeal}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
+        onDelete={handleDelete}
+        onUpdate={handleUpdate}
       />
     </div>
   );

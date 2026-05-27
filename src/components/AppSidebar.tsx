@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, Truck, Kanban, ClipboardList, BarChart2 } from "lucide-react";
+import { LayoutDashboard, Users, Truck, Kanban, ClipboardList, BarChart2, Droplet } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -29,41 +29,41 @@ export function AppSidebar() {
   const location = useLocation();
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4">
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+      <SidebarHeader className="p-5">
         {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">SP</span>
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 shrink-0 rounded-md bg-primary flex items-center justify-center text-primary-foreground shadow-sm">
+              <Droplet fill="currentColor" className="h-5 w-5" />
             </div>
-            <div>
-              <h2 className="font-semibold text-sm text-sidebar-accent-foreground">SerigrafíaPro</h2>
-              <p className="text-xs text-sidebar-foreground">Gestión de Taller</p>
+            <div className="flex flex-col">
+              <h2 className="font-bold text-sm leading-tight text-sidebar-foreground">SerigrafíaPro</h2>
+              <p className="text-[11px] leading-tight text-sidebar-foreground/70 font-medium tracking-wide uppercase mt-0.5">Gestión de Taller</p>
             </div>
           </div>
         )}
         {collapsed && (
-          <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center mx-auto">
-            <span className="text-primary-foreground font-bold text-sm">S</span>
+          <div className="h-9 w-9 shrink-0 rounded-md bg-primary flex items-center justify-center mx-auto text-primary-foreground shadow-sm">
+            <Droplet fill="currentColor" className="h-5 w-5" />
           </div>
         )}
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="px-3">
         <SidebarGroup>
-          <SidebarGroupLabel>Navegación</SidebarGroupLabel>
+          <SidebarGroupLabel className="px-2 text-xs font-semibold tracking-wider text-sidebar-foreground/50 uppercase mb-2">Navegación</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-1">
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                  <SidebarMenuButton asChild className="h-10 px-0 hover:bg-transparent">
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
-                      className="hover:bg-sidebar-accent"
-                      activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
+                      className="flex items-center w-full px-3 py-2 rounded-md hover:bg-sidebar-accent/50 text-sidebar-foreground/80 hover:text-sidebar-foreground transition-all duration-200"
+                      activeClassName="bg-[#2a303c] text-white font-medium border-l-[4px] border-primary rounded-l-none"
                     >
-                      <item.icon className="mr-2 h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
+                      <item.icon className="h-[18px] w-[18px] shrink-0" />
+                      {!collapsed && <span className="ml-3 text-sm">{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

@@ -21,19 +21,22 @@ export function AppLayout() {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 flex items-center justify-between border-b bg-card px-4 shrink-0">
-            <div className="flex items-center">
-              <SidebarTrigger className="mr-4" />
-              <h1 className="font-semibold text-sm text-foreground">SerigrafíaPro CRM</h1>
+          <header className="h-14 flex items-center justify-between border-b border-border/60 bg-card px-6 shrink-0 transition-all">
+            <div className="flex items-center h-full">
+              {/* Trigger solo visible en móvil para no romper la navegación */}
+              <div className="md:hidden flex items-center h-full">
+                <SidebarTrigger className="mr-2" />
+              </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center h-full gap-4">
               {session && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground hidden md:inline-block">
+                <div className="flex items-center gap-3 h-full">
+                  <span className="text-sm font-medium text-foreground/80 hidden md:inline-block leading-none">
                     {session.user.email}
                   </span>
-                  <Button variant="outline" size="sm" onClick={handleLogout}>
+                  <div className="h-4 w-px bg-border hidden md:block"></div>
+                  <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground hover:text-foreground">
                     <LogOut className="h-4 w-4 mr-2" />
                     Cerrar Sesión
                   </Button>

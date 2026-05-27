@@ -44,6 +44,10 @@ export interface KanbanCard {
   dueDate: string;
   ingreso?: number;
   descripcion?: string;
+  clienteId?: string;
+  clienteCorreo?: string;
+  clienteNumero?: string;
+  url_adjunto?: string;
 }
 
 export const dailyTasks: Task[] = [
