@@ -21,9 +21,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
 } from "recharts";
 import { useState, useEffect, useRef } from "react";
 
@@ -51,12 +48,6 @@ interface PedidoActivo {
   clientes: { nombre: string } | null;
 }
 
-interface PedidoPorEtapa {
-  name: string;
-  value: number;
-  color: string;
-}
-
 interface VentaMensual {
   month: string;
   ventas: number;
@@ -80,14 +71,6 @@ const stageColors: Record<string, string> = {
   entregado: "bg-slate-100 text-slate-600 border-slate-200",
 };
 
-const pieColors: Record<string, string> = {
-  en_cola: "#3b82f6",
-  en_curso: "#f59e0b",
-  control_calidad: "#8b5cf6",
-  listo_entrega: "#10b981",
-  entregado: "#64748b",
-};
-
 const MONTH_NAMES = [
   "Ene",
   "Feb",
@@ -106,10 +89,11 @@ const MONTH_NAMES = [
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatMXN(n: number): string {
-  if (n >= 1000) {
-    return `$${(n / 1000).toFixed(1)}k`;
-  }
-  return `$${n.toLocaleString("es-MX")}`;
+  return n.toLocaleString("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    maximumFractionDigits: 0,
+  });
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -130,7 +114,6 @@ export default function Dashboard() {
     ingresosEntregados: 0,
   });
   const [pedidosActivos, setPedidosActivos] = useState<PedidoActivo[]>([]);
-  const [pedidosPorEtapa, setPedidosPorEtapa] = useState<PedidoPorEtapa[]>([]);
   const [ventasMensuales, setVentasMensuales] = useState<VentaMensual[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -189,33 +172,22 @@ export default function Dashboard() {
         }))
       );
 
-      const etapaCounts: Record<string, number> = {};
-      for (const p of allPedidos) {
-        const etapa = p.etapa_pedido ?? "en_cola";
-        etapaCounts[etapa] = (etapaCounts[etapa] ?? 0) + 1;
-      }
-      setPedidosPorEtapa(
-        Object.entries(etapaCounts).map(([key, value]) => ({
-          name: stageLabels[key] ?? key, value, color: pieColors[key] ?? "#94a3b8",
-        }))
-      );
-
-      const now = new Date();
+      const year = new Date().getFullYear();
       const monthlyMap: Record<string, number> = {};
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        monthlyMap[`${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`] = 0;
+      for (let month = 0; month <= 5; month++) {
+        monthlyMap[`${year}-${String(month).padStart(2, "0")}`] = 0;
       }
       for (const p of allPedidos) {
         if (p.valor_pedido == null) continue;
         const d = new Date(p.created_at);
-        const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
-        if (key in monthlyMap) monthlyMap[key] += p.valor_pedido;
+        if (d.getFullYear() !== year || d.getMonth() > 5) continue;
+        const key = `${year}-${String(d.getMonth()).padStart(2, "0")}`;
+        monthlyMap[key] += p.valor_pedido;
       }
       setVentasMensuales(
         Object.entries(monthlyMap).map(([key, ventas]) => {
           const [, m] = key.split("-");
-          return { month: MONTH_NAMES[parseInt(m)], ventas };
+          return { month: MONTH_NAMES[parseInt(m, 10)], ventas };
         })
       );
 
@@ -470,7 +442,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">
-              Ventas Mensuales (valor de pedidos)
+              Ventas Mensuales — ene. a jun. {new Date().getFullYear()}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -518,77 +490,15 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Pie chart — pedidos por etapa */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">
-              Distribución de Pedidos por Etapa
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {pedidosPorEtapa.length > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie
-                    data={pedidosPorEtapa}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={95}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {pedidosPorEtapa.map((entry) => (
-                      <Cell
-                        key={entry.name}
-                        fill={entry.color}
-                        stroke="transparent"
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "var(--radius)",
-                      fontSize: 12,
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-center text-sm text-muted-foreground py-12">
-                Sin pedidos registrados.
-              </p>
-            )}
-            {pedidosPorEtapa.length > 0 && (
-              <div className="flex flex-wrap gap-3 justify-center mt-2">
-                {pedidosPorEtapa.map((entry) => (
-                  <div key={entry.name} className="flex items-center gap-1.5">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: entry.color }}
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {entry.name} ({entry.value})
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Active Orders Table — real data */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Pedidos Activos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {pedidosActivos.length > 0 ? (
-              <div className="max-h-[300px] overflow-y-auto overflow-x-auto pr-1">
-                <table className="w-full text-sm">
+      {/* Active Orders Table — real data */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Pedidos Activos</CardTitle>
+        </CardHeader>
+        <CardContent className="h-[300px]">
+          {pedidosActivos.length > 0 ? (
+            <div className="h-full overflow-y-auto overflow-x-auto pr-1">
+              <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2 px-3 font-medium text-muted-foreground">
@@ -639,16 +549,15 @@ export default function Dashboard() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-center text-sm text-muted-foreground py-8">
-                No hay pedidos activos.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              </table>
+            </div>
+          ) : (
+            <p className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
+              No hay pedidos activos.
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

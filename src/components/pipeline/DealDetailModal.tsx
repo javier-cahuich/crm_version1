@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { KanbanCard } from "@/data/mockData";
 import {
   Dialog,
@@ -33,6 +33,8 @@ import {
   CheckCircle2,
   Pencil,
   Save,
+  ImagePlus,
+  Upload,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import ContactClientModal from "@/components/ui/ContactClientModal";
@@ -295,6 +297,19 @@ export default function DealDetailModal({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const imgInputRef = useRef<HTMLInputElement>(null);
+  const editImgInputRef = useRef<HTMLInputElement>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [currentUrl, setCurrentUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCurrentUrl(deal?.url_adjunto ?? null);
+    setImageFile(null);
+    setImagePreview(null);
+  }, [deal?.id, deal?.url_adjunto]);
+
   if (!deal) return null;
 
   const stageName = stageLabels[deal.stage ?? ""] ?? deal.stage ?? "—";
@@ -317,13 +332,70 @@ export default function DealDetailModal({
       descripcion: deal!.descripcion ?? "",
       ingreso: deal!.ingreso?.toString() ?? "",
     });
+    setImageFile(null);
+    setImagePreview(null);
     setSaveError(null);
     setEditing(true);
   }
 
   function cancelEdit() {
     setEditing(false);
+    setImageFile(null);
+    setImagePreview(null);
     setSaveError(null);
+  }
+
+  function handleEditImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImageFile(file);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(URL.createObjectURL(file));
+  }
+
+  function handleReadOnlyImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    uploadAndPersist(file);
+  }
+
+  async function uploadAndPersist(file: File) {
+    if (!deal) return;
+    setUploading(true);
+
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const filePath = `tratos/${deal.id}/${Date.now()}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from("adjuntos")
+      .upload(filePath, file, { upsert: true });
+
+    if (upErr) {
+      setUploading(false);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("adjuntos")
+      .getPublicUrl(filePath);
+
+    const publicUrl = urlData?.publicUrl ?? null;
+
+    if (publicUrl) {
+      await supabase
+        .from("tratos")
+        .update({ url_adjunto: publicUrl })
+        .eq("id", deal.id);
+
+      setCurrentUrl(publicUrl);
+      if (onUpdate) {
+        onUpdate({ ...deal, url_adjunto: publicUrl });
+      }
+    }
+
+    setUploading(false);
   }
 
   async function handleSave() {
@@ -331,12 +403,30 @@ export default function DealDetailModal({
     setSaving(true);
     setSaveError(null);
 
+    let newUrl = currentUrl;
+    if (imageFile && deal) {
+      const ext = imageFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+      const filePath = `tratos/${deal.id}/${Date.now()}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("adjuntos")
+        .upload(filePath, imageFile, { upsert: true });
+
+      if (!upErr) {
+        const { data: urlData } = supabase.storage
+          .from("adjuntos")
+          .getPublicUrl(filePath);
+        newUrl = urlData?.publicUrl ?? currentUrl;
+      }
+    }
+
     const { error: sbError } = await supabase
       .from("tratos")
       .update({
         nombre_trato: editForm.nombre.trim(),
         descripcion: editForm.descripcion.trim() || null,
         ingreso_esperado: editForm.ingreso ? parseFloat(editForm.ingreso) : null,
+        url_adjunto: newUrl,
       })
       .eq("id", deal!.id);
 
@@ -346,16 +436,20 @@ export default function DealDetailModal({
       return;
     }
 
-    // Notify parent with updated card
+    setCurrentUrl(newUrl);
+
     if (onUpdate) {
       onUpdate({
         ...deal!,
         title: editForm.nombre.trim(),
         descripcion: editForm.descripcion.trim() || undefined,
         ingreso: editForm.ingreso ? parseFloat(editForm.ingreso) : undefined,
+        url_adjunto: newUrl ?? undefined,
       });
     }
 
+    setImageFile(null);
+    setImagePreview(null);
     setSaving(false);
     setEditing(false);
   }
@@ -463,6 +557,44 @@ export default function DealDetailModal({
                     {saveError}
                   </div>
                 )}
+
+                <div className="space-y-1.5 pt-2 border-t border-border">
+                  <Label>Imagen adjunta</Label>
+                  <input
+                    ref={editImgInputRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp"
+                    className="hidden"
+                    onChange={handleEditImageSelect}
+                  />
+                  {(imagePreview || currentUrl) ? (
+                    <div className="relative rounded-lg border border-border overflow-hidden bg-muted/30">
+                      <img
+                        src={imagePreview ?? currentUrl!}
+                        alt="Vista previa"
+                        className="w-full h-36 object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => editImgInputRef.current?.click()}
+                        className="absolute bottom-2 right-2 p-1.5 rounded-md bg-background/80 border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+                        title="Cambiar imagen"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => editImgInputRef.current?.click()}
+                      className="w-full border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center gap-1.5 text-center text-muted-foreground bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer"
+                    >
+                      <ImagePlus className="h-5 w-5 opacity-50" />
+                      <span className="text-xs font-medium">Seleccionar imagen</span>
+                      <span className="text-[10px] opacity-60">JPG, PNG, WebP</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               /* ── Read-only view ── */
@@ -506,21 +638,50 @@ export default function DealDetailModal({
                   />
                 )}
 
-                {/* ── Sección Adjuntar archivo ── */}
                 <div className="mt-5 pt-4 border-t border-border">
                   <div className="flex items-center gap-2 mb-3">
                     <Paperclip className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-semibold">Adjuntar archivo</p>
+                    <p className="text-sm font-semibold">Imagen adjunta</p>
                   </div>
-                  <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center gap-2 text-center text-muted-foreground bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer">
-                    <Paperclip className="h-8 w-8 opacity-40" />
-                    <p className="text-sm font-medium">
-                      Arrastra archivos aquí o haz clic para seleccionar
-                    </p>
-                    <p className="text-xs opacity-70">
-                      PDF, imágenes, documentos (máx. 10 MB)
-                    </p>
-                  </div>
+                  <input
+                    ref={imgInputRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp"
+                    className="hidden"
+                    onChange={handleReadOnlyImageSelect}
+                  />
+                  {uploading ? (
+                    <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center gap-2 text-center text-muted-foreground bg-muted/30">
+                      <Loader2 className="h-6 w-6 animate-spin opacity-50" />
+                      <p className="text-xs font-medium">Subiendo imagen...</p>
+                    </div>
+                  ) : currentUrl ? (
+                    <div className="relative rounded-lg border border-border overflow-hidden bg-muted/30">
+                      <img
+                        src={currentUrl}
+                        alt="Adjunto del trato"
+                        className="w-full h-44 object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => imgInputRef.current?.click()}
+                        className="absolute bottom-2 right-2 p-1.5 rounded-md bg-background/80 border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+                        title="Cambiar imagen"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => imgInputRef.current?.click()}
+                      className="w-full border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center gap-2 text-center text-muted-foreground bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer"
+                    >
+                      <ImagePlus className="h-8 w-8 opacity-40" />
+                      <p className="text-xs font-medium">Haz clic para adjuntar una imagen</p>
+                      <p className="text-[10px] opacity-60">JPG, PNG, WebP</p>
+                    </button>
+                  )}
                 </div>
               </>
             )}

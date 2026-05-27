@@ -38,6 +38,7 @@ function tratoToCard(row: TratoDB): KanbanCard {
     clienteId: row.cliente_id ?? undefined,
     clienteCorreo: row.clientes?.correo ?? undefined,
     clienteNumero: row.clientes?.numero ?? undefined,
+    url_adjunto: row.url_adjunto ?? undefined,
   };
 }
 
