@@ -169,7 +169,7 @@ export default function Reportes() {
     <>
       {/* Print-only header */}
       <div className="hidden print:block mb-6 pb-4 border-b-2 border-black">
-        <h1 className="text-2xl font-bold text-black">Reporte Ejecutivo — SerigrafíaPro CRM</h1>
+        <h1 className="text-2xl font-bold text-black">Reporte Ejecutivo — ProyecsionCRM</h1>
         <p className="text-sm text-gray-600 mt-1">Generado: {new Date().toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
         <p className="text-sm text-gray-600">Periodo: {rangoLabel}</p>
         <div className="flex gap-8 mt-3 text-sm">

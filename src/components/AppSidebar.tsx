@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, Truck, Kanban, ClipboardList, BarChart2, Droplet } from "lucide-react";
+import { LayoutDashboard, Users, Truck, Kanban, ClipboardList, BarChart2 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -33,19 +33,23 @@ export function AppSidebar() {
       <SidebarHeader className="p-5">
         {!collapsed && (
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 shrink-0 rounded-md bg-primary flex items-center justify-center text-primary-foreground shadow-sm">
-              <Droplet fill="currentColor" className="h-5 w-5" />
-            </div>
+            <img
+              src="/img/logo1.jpeg"
+              alt="Logo"
+              className="h-9 w-9 shrink-0 rounded-md object-cover shadow-sm"
+            />
             <div className="flex flex-col">
-              <h2 className="font-bold text-sm leading-tight text-sidebar-foreground">SerigrafíaPro</h2>
+              <h2 className="font-bold text-sm leading-tight text-sidebar-foreground">ProyecsionCRM</h2>
               <p className="text-[11px] leading-tight text-sidebar-foreground/70 font-medium tracking-wide uppercase mt-0.5">Gestión de Taller</p>
             </div>
           </div>
         )}
         {collapsed && (
-          <div className="h-9 w-9 shrink-0 rounded-md bg-primary flex items-center justify-center mx-auto text-primary-foreground shadow-sm">
-            <Droplet fill="currentColor" className="h-5 w-5" />
-          </div>
+          <img
+            src="/img/logo1.jpeg"
+            alt="Logo"
+            className="h-9 w-9 shrink-0 rounded-md object-cover shadow-sm mx-auto"
+          />
         )}
       </SidebarHeader>
       <SidebarContent className="px-3">
