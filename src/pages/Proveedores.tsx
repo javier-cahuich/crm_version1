@@ -35,6 +35,8 @@ import {
   Calendar,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
+import { isValidEmail, isValidPhone } from "@/lib/validation";
 import ContactClientModal from "@/components/ui/ContactClientModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -457,10 +459,44 @@ export default function Proveedores() {
     );
   });
 
+  const correoTrimmed = form.correo.trim();
+  const numeroTrimmed = form.numero.trim();
+  const correoInvalid =
+    correoTrimmed !== "" && !isValidEmail(form.correo);
+  const numeroInvalid =
+    numeroTrimmed !== "" && !isValidPhone(form.numero);
+
+  const canCreate =
+    form.nombre.trim() !== "" &&
+    !correoInvalid &&
+    !numeroInvalid;
+
+  function handleFormChange(
+    field: keyof ProveedorForm,
+    value: string,
+  ) {
+    setForm((f) => ({ ...f, [field]: value }));
+    if (field === "correo" || field === "numero") setFormError(null);
+  }
+
   // ── Create handler ─────────────────────────────────────────────────────────
 
   async function handleCreate() {
-    if (!form.nombre.trim() || saving) return;
+    if (!canCreate || saving) return;
+
+    if (correoTrimmed && !isValidEmail(form.correo)) {
+      setFormError(
+        "Introduce un correo electrónico válido (ej. nombre@dominio.com).",
+      );
+      return;
+    }
+    if (numeroTrimmed && !isValidPhone(form.numero)) {
+      setFormError(
+        "Introduce un teléfono válido de 10 dígitos (ej. 9811234567) o con código de país +52.",
+      );
+      return;
+    }
+
     setSaving(true);
     setFormError(null);
 
@@ -644,9 +680,7 @@ export default function Proveedores() {
                 id="prov-nombre"
                 placeholder="Ej. TintaMax"
                 value={form.nombre}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, nombre: e.target.value }))
-                }
+                onChange={(e) => handleFormChange("nombre", e.target.value)}
               />
             </div>
 
@@ -655,24 +689,43 @@ export default function Proveedores() {
               <Input
                 id="prov-correo"
                 type="email"
+                inputMode="email"
+                autoComplete="email"
                 placeholder="ventas@ejemplo.com"
                 value={form.correo}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, correo: e.target.value }))
-                }
+                aria-invalid={correoInvalid}
+                className={cn(
+                  correoInvalid && "border-destructive focus-visible:ring-destructive",
+                )}
+                onChange={(e) => handleFormChange("correo", e.target.value)}
               />
+              {correoInvalid && (
+                <p className="text-xs text-destructive">
+                  Introduce un correo electrónico válido (ej. nombre@dominio.com).
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="prov-numero">Teléfono</Label>
               <Input
                 id="prov-numero"
-                placeholder="+52 55 1234-5678"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="Ej. 9811234567"
                 value={form.numero}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, numero: e.target.value }))
-                }
+                aria-invalid={numeroInvalid}
+                className={cn(
+                  numeroInvalid && "border-destructive focus-visible:ring-destructive",
+                )}
+                onChange={(e) => handleFormChange("numero", e.target.value)}
               />
+              {numeroInvalid && (
+                <p className="text-xs text-destructive">
+                  Introduce un teléfono válido de 10 dígitos (ej. 9811234567) o con código +52.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -699,7 +752,7 @@ export default function Proveedores() {
           <SheetFooter className="px-6 py-4 border-t">
             <Button
               className="w-full"
-              disabled={!form.nombre.trim() || saving}
+              disabled={!canCreate || saving}
               onClick={handleCreate}
             >
               {saving ? (

@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
+import { isValidEmail, isValidPhone } from "@/lib/validation";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -55,17 +57,39 @@ export default function CreateClientePanel({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const correoTrimmed = form.correo.trim();
+  const correoInvalid =
+    correoTrimmed !== "" && !isValidEmail(form.correo);
+
+  const telefonoTrimmed = form.telefono.trim();
+  const telefonoInvalid =
+    telefonoTrimmed !== "" && !isValidPhone(form.telefono);
+
   const isValid =
     form.nombre.trim() !== "" &&
-    form.correo.trim() !== "" &&
-    form.telefono.trim() !== "" &&
+    correoTrimmed !== "" &&
+    isValidEmail(form.correo) &&
+    telefonoTrimmed !== "" &&
+    isValidPhone(form.telefono) &&
     form.direccion.trim() !== "";
 
   function handleChange(field: keyof ClienteForm, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (field === "correo" || field === "telefono") setSubmitError(null);
   }
 
   async function handleSubmit() {
+    if (!isValidEmail(form.correo)) {
+      setSubmitError("Introduce un correo electrónico válido (ej. nombre@dominio.com).");
+      return;
+    }
+    if (!isValidPhone(form.telefono)) {
+      setSubmitError(
+        "Introduce un teléfono válido de 10 dígitos (ej. 9811234567) o con código de país +52.",
+      );
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
 
@@ -127,10 +151,19 @@ export default function CreateClientePanel({
             <Input
               id="cliente-correo"
               type="email"
+              inputMode="email"
+              autoComplete="email"
               placeholder="Ej. maria@ejemplo.com"
               value={form.correo}
+              aria-invalid={correoInvalid}
+              className={cn(correoInvalid && "border-destructive focus-visible:ring-destructive")}
               onChange={(e) => handleChange("correo", e.target.value)}
             />
+            {correoInvalid && (
+              <p className="text-xs text-destructive">
+                Introduce un correo electrónico válido (ej. nombre@dominio.com).
+              </p>
+            )}
           </div>
 
           {/* Teléfono */}
@@ -141,10 +174,19 @@ export default function CreateClientePanel({
             <Input
               id="cliente-telefono"
               type="tel"
+              inputMode="tel"
+              autoComplete="tel"
               placeholder="Ej. 9811234567"
               value={form.telefono}
+              aria-invalid={telefonoInvalid}
+              className={cn(telefonoInvalid && "border-destructive focus-visible:ring-destructive")}
               onChange={(e) => handleChange("telefono", e.target.value)}
             />
+            {telefonoInvalid && (
+              <p className="text-xs text-destructive">
+                Introduce un teléfono válido de 10 dígitos (ej. 9811234567) o con código +52.
+              </p>
+            )}
           </div>
 
           {/* Dirección */}

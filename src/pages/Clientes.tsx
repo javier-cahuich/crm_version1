@@ -805,7 +805,7 @@ export default function Clientes() {
       reader.onload = (evt) => {
         try {
           const data = evt.target?.result;
-          const workbook = XLSX.read(data, { type: "binary" });
+          const workbook = XLSX.read(data, { type: "array" });
           const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json<Record<string, string>>(firstSheet, { defval: "" });
           processImportRows(rows);
@@ -815,7 +815,7 @@ export default function Clientes() {
           setImporting(false);
         }
       };
-      reader.readAsBinaryString(file);
+      reader.readAsArrayBuffer(file);
     } else {
       setImportResult({ inserted: 0, skipped: 0, errors: ["Formato no soportado. Usa archivos .csv, .xls o .xlsx."] });
       setImportResultOpen(true);
