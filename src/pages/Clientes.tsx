@@ -27,6 +27,7 @@ import {
   ShoppingBag,
   Upload,
   FileSpreadsheet,
+  Download,
   CheckCircle2,
   ArrowUpDown,
   ChevronLeft,
@@ -535,7 +536,8 @@ function ClientDetailModal({
 
 // ── Column mapping helpers ────────────────────────────────────────────────────
 
-const COLUMN_MAP: Record<string, keyof Pick<ClienteDB, "nombre" | "correo" | "numero" | "direccion">> = {
+const COLUMN_MAP: Record<string, keyof Pick<ClienteDB, "id" | "nombre" | "correo" | "numero" | "direccion">> = {
+  id: "id",
   nombre: "nombre",
   name: "nombre",
   "nombre del cliente": "nombre",
@@ -558,8 +560,8 @@ const COLUMN_MAP: Record<string, keyof Pick<ClienteDB, "nombre" | "correo" | "nu
   address: "direccion",
 };
 
-function mapColumnName(raw: string): keyof Pick<ClienteDB, "nombre" | "correo" | "numero" | "direccion"> | null {
-  const key = raw.trim().toLowerCase().replace(/[\s_]+/g, " ");
+function mapColumnName(raw: string): keyof Pick<ClienteDB, "id" | "nombre" | "correo" | "numero" | "direccion"> | null {
+  const key = raw.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[\s_]+/g, " ");
   return COLUMN_MAP[key] ?? null;
 }
 
@@ -603,38 +605,38 @@ export default function Clientes() {
     setClientes((prev) => [local, ...prev]);
   }
 
-  useEffect(() => {
-    async function fetchClientes() {
-      setLoading(true);
-      setError(null);
+  async function fetchClientes() {
+    setLoading(true);
+    setError(null);
 
-      const { data, error: sbError } = await supabase
-        .from("clientes")
-        .select("id, nombre, correo, numero, direccion, created_at, pedidos(valor_pedido)")
-        .order("created_at", { ascending: false });
+    const { data, error: sbError } = await supabase
+      .from("clientes")
+      .select("id, nombre, correo, numero, direccion, created_at, pedidos(valor_pedido)")
+      .order("created_at", { ascending: false });
 
-      if (sbError) {
-        setError(sbError.message);
-      } else {
-        const mapped = (data || []).map((c: any) => {
-          const pedidos = c.pedidos || [];
-          const aportacion = pedidos.reduce((acc: number, p: any) => acc + (p.valor_pedido || 0), 0);
-          return {
-            id: c.id,
-            nombre: c.nombre,
-            correo: c.correo,
-            numero: c.numero,
-            direccion: c.direccion,
-            created_at: c.created_at,
-            aportacion,
-          } as ClienteLocal;
-        });
-        setClientes(mapped);
-      }
-
-      setLoading(false);
+    if (sbError) {
+      setError(sbError.message);
+    } else {
+      const mapped = (data || []).map((c: any) => {
+        const pedidos = c.pedidos || [];
+        const aportacion = pedidos.reduce((acc: number, p: any) => acc + (p.valor_pedido || 0), 0);
+        return {
+          id: c.id,
+          nombre: c.nombre,
+          correo: c.correo,
+          numero: c.numero,
+          direccion: c.direccion,
+          created_at: c.created_at,
+          aportacion,
+        } as ClienteLocal;
+      });
+      setClientes(mapped);
     }
 
+    setLoading(false);
+  }
+
+  useEffect(() => {
     fetchClientes();
   }, []);
 
@@ -692,6 +694,27 @@ export default function Clientes() {
 
   // ── Import handler ─────────────────────────────────────────────────────────
 
+  function handleExport() {
+    const csvData = clientes.map(c => ({
+      ID: c.id,
+      Nombre: c.nombre,
+      Correo: c.correo || "",
+      Teléfono: c.numero || "",
+      Dirección: c.direccion || "",
+      Aportación: c.aportacion,
+      "Fecha de alta": c.created_at ? new Date(c.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : ""
+    }));
+
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `clientes_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function processImportRows(rows: Record<string, string>[]) {
     if (rows.length === 0) {
       setImportResult({ inserted: 0, skipped: 0, errors: ["El archivo no contiene filas de datos."] });
@@ -702,18 +725,18 @@ export default function Clientes() {
 
     // Map headers
     const headers = Object.keys(rows[0]);
-    const colMapping: Record<string, keyof Pick<ClienteDB, "nombre" | "correo" | "numero" | "direccion">> = {};
+    const colMapping: Record<string, keyof Pick<ClienteDB, "id" | "nombre" | "correo" | "numero" | "direccion">> = {};
     for (const h of headers) {
       const mapped = mapColumnName(h);
       if (mapped) colMapping[h] = mapped;
     }
 
-    if (!Object.values(colMapping).includes("nombre")) {
+    if (!Object.values(colMapping).includes("nombre") && !Object.values(colMapping).includes("id")) {
       setImportResult({
         inserted: 0,
         skipped: rows.length,
         errors: [
-          `No se encontró la columna "nombre" en el archivo. Columnas detectadas: ${headers.join(", ")}`,
+          `No se encontró la columna "nombre" o "id" en el archivo. Columnas detectadas: ${headers.join(", ")}`,
         ],
       });
       setImportResultOpen(true);
@@ -722,6 +745,7 @@ export default function Clientes() {
     }
 
     const toInsert: { nombre: string; correo?: string; numero?: string; direccion?: string }[] = [];
+    const toUpdate: { id: string; nombre?: string; correo?: string; numero?: string; direccion?: string }[] = [];
     let skipped = 0;
     const errors: string[] = [];
 
@@ -729,50 +753,106 @@ export default function Clientes() {
       const row = rows[i];
       const mapped: Record<string, string> = {};
       for (const [rawCol, dbCol] of Object.entries(colMapping)) {
-        const val = row[rawCol]?.trim();
-        if (val) mapped[dbCol] = val;
+        const val = row[rawCol];
+        if (val !== undefined) mapped[dbCol] = val.trim();
       }
 
-      if (!mapped.nombre) {
+      if (!mapped.nombre && !mapped.id) {
         skipped++;
         continue;
       }
 
-      toInsert.push({
-        nombre: mapped.nombre,
-        correo: mapped.correo || undefined,
-        numero: mapped.numero || undefined,
-        direccion: mapped.direccion || undefined,
-      });
+      if (mapped.id) {
+        const existing = clientes.find((c) => c.id === mapped.id);
+        let hasChanges = false;
+        
+        const currentNombre = existing?.nombre || "";
+        const newNombre = mapped.nombre !== undefined ? mapped.nombre : currentNombre;
+        if (newNombre !== currentNombre) hasChanges = true;
+
+        const currentCorreo = existing?.correo || "";
+        const newCorreo = mapped.correo !== undefined ? mapped.correo : currentCorreo;
+        if (newCorreo !== currentCorreo) hasChanges = true;
+
+        const currentNumero = existing?.numero || "";
+        const newNumero = mapped.numero !== undefined ? mapped.numero : currentNumero;
+        if (newNumero !== currentNumero) hasChanges = true;
+
+        const currentDireccion = existing?.direccion || "";
+        const newDireccion = mapped.direccion !== undefined ? mapped.direccion : currentDireccion;
+        if (newDireccion !== currentDireccion) hasChanges = true;
+
+        if (!existing) {
+          hasChanges = true;
+        }
+
+        if (hasChanges) {
+          toUpdate.push({
+            id: mapped.id,
+            nombre: newNombre || currentNombre || "Sin nombre",
+            correo: newCorreo || null,
+            numero: newNumero || null,
+            direccion: newDireccion || null,
+          });
+        } else {
+          skipped++;
+        }
+      } else if (mapped.nombre) {
+        toInsert.push({
+          nombre: mapped.nombre,
+          correo: mapped.correo || undefined,
+          numero: mapped.numero || undefined,
+          direccion: mapped.direccion || undefined,
+        });
+      } else {
+        skipped++;
+      }
     }
 
-    if (toInsert.length === 0) {
-      setImportResult({ inserted: 0, skipped, errors: ["Ninguna fila tenía un nombre válido."] });
+    if (toInsert.length === 0 && toUpdate.length === 0) {
+      setImportResult({ inserted: 0, skipped, errors: ["Ninguna fila tenía datos válidos."] });
       setImportResultOpen(true);
       setImporting(false);
       return;
     }
 
-    // Bulk insert in batches of 100
     let inserted = 0;
+    let updated = 0;
     const BATCH = 100;
+    
+    // Process updates sequentially to avoid rate-limiting or pool exhaustion
+    for (const record of toUpdate) {
+      const { id, ...data } = record;
+      const { data: resData, error } = await supabase.from("clientes").update(data).eq("id", id).select("id");
+      
+      if (error) {
+        errors.push(`Error ID ${id}: ${error.message}`);
+      } else if (!resData || resData.length === 0) {
+        errors.push(`Falló actualización ID: ${id}. Payload: ${JSON.stringify(data)}`);
+      } else {
+        updated++;
+      }
+    }
+
+    // Process inserts
     for (let i = 0; i < toInsert.length; i += BATCH) {
       const batch = toInsert.slice(i, i + BATCH);
       const { data, error: sbError } = await supabase
         .from("clientes")
         .insert(batch)
-        .select("id, nombre, correo, numero, direccion, created_at");
+        .select("id");
 
       if (sbError) {
-        errors.push(`Error en lote ${Math.floor(i / BATCH) + 1}: ${sbError.message}`);
+        errors.push(`Error al insertar lote ${Math.floor(i / BATCH) + 1}: ${sbError.message}`);
       } else if (data) {
         inserted += data.length;
-        const mapped = data.map((d: any) => ({ ...d, aportacion: 0 } as ClienteLocal));
-        setClientes((prev) => [...mapped, ...prev]);
       }
     }
 
-    setImportResult({ inserted, skipped, errors });
+    // Refresh clients list from DB
+    await fetchClientes();
+
+    setImportResult({ inserted: inserted + updated, skipped, errors });
     setImportResultOpen(true);
     setImporting(false);
   }
@@ -869,6 +949,14 @@ export default function Clientes() {
                 Importar
               </>
             )}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            className="flex items-center gap-2 whitespace-nowrap"
+          >
+            <Download className="h-4 w-4" />
+            Exportar
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
