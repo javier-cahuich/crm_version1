@@ -21,7 +21,7 @@ export function AppLayout() {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 flex items-center justify-between border-b border-border/60 bg-card px-6 shrink-0 transition-all">
+          <header className="h-14 flex items-center justify-between border-b border-border/60 bg-card px-4 md:px-6 shrink-0 transition-all">
             <div className="flex items-center h-full">
               {/* Trigger solo visible en móvil para no romper la navegación */}
               <div className="md:hidden flex items-center h-full">
