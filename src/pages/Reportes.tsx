@@ -312,7 +312,7 @@ export default function Reportes() {
           <CardContent>
             {filteredPedidos.length > 0 ? (
               <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm print:text-xs">
+                <table className="w-full min-w-[560px] print:min-w-0 text-sm print:text-xs">
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground">Pedido</th>
@@ -351,7 +351,7 @@ export default function Reportes() {
           <CardContent>
             {filteredTratos.length > 0 ? (
               <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm print:text-xs">
+                <table className="w-full min-w-[560px] print:min-w-0 text-sm print:text-xs">
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground">Trato</th>

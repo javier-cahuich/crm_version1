@@ -837,10 +837,10 @@ export default function Clientes() {
               : `${clientes.length} cliente${clientes.length !== 1 ? "s" : ""} registrado${clientes.length !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <Button
             onClick={() => setPanelOpen(true)}
-            className="flex items-center gap-2 whitespace-nowrap"
+            className="flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap"
           >
             <UserPlus className="h-4 w-4" />
             Agregar cliente
@@ -856,7 +856,7 @@ export default function Clientes() {
             variant="outline"
             onClick={() => fileInputRef.current?.click()}
             disabled={importing}
-            className="flex items-center gap-2 whitespace-nowrap"
+            className="flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap"
           >
             {importing ? (
               <>
@@ -872,7 +872,7 @@ export default function Clientes() {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="flex-1 sm:flex-none justify-center gap-2">
                 <ArrowUpDown className="h-4 w-4" />
                 Ordenar
               </Button>
@@ -933,7 +933,7 @@ export default function Clientes() {
       {!loading && !error && filtered.length > 0 && (
         <div className="space-y-4">
           <div className="w-full overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[680px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">

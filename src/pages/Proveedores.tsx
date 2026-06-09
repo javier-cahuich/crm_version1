@@ -516,7 +516,7 @@ export default function Proveedores() {
             registrado{proveedores.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -528,7 +528,7 @@ export default function Proveedores() {
           </div>
           <Button
             onClick={() => setPanelOpen(true)}
-            className="shrink-0 gap-2"
+            className="w-full sm:w-auto shrink-0 justify-center gap-2"
           >
             <Plus className="h-4 w-4" />
             Agregar Proveedor
@@ -564,7 +564,7 @@ export default function Proveedores() {
       {/* Suppliers table */}
       {!loading && !error && filtered.length > 0 && (
         <div className="w-full overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/50">
                 <th className="px-4 py-3 text-left font-semibold text-muted-foreground">
